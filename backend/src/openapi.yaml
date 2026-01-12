@@ -1,4 +1,5 @@
 openapi: 3.0.3
+
 info:
   title: csignes-lsf API
   version: 1.0.0
@@ -43,6 +44,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Course"
+        "404":
+          description: Not found
 
   /api/lessons/{lessonId}:
     get:
@@ -60,6 +63,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Lesson"
+        "404":
+          description: Lesson not found
 
   /api/dictionary:
     get:
@@ -74,9 +79,94 @@ paths:
                 items:
                   $ref: "#/components/schemas/DictionaryEntry"
 
+  /api/auth/google:
+    post:
+      summary: Login with Google (exchange idToken for accessToken)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthGoogleRequest"
+      responses:
+        "200":
+          description: Auth success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthGoogleResponse"
+        "400":
+          description: idToken missing / bad request
+        "401":
+          description: Invalid token
+
+  /api/progress/me:
+    get:
+      summary: Get my progress (authenticated)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Progress"
+        "401":
+          description: Unauthorized
+
+  /api/progress/me/lesson/{lessonId}/attempt:
+    get:
+      summary: Get my attempt for a lesson
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Attempt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LessonAttempt"
+        "401":
+          description: Unauthorized
+        "404":
+          description: No attempt
+
+  /api/attempts:
+    post:
+      summary: Submit my attempt for a lesson
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttemptCreateRequest"
+      responses:
+        "200":
+          description: Attempt saved + progress updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttemptCreateResponse"
+        "400":
+          description: Invalid payload
+        "401":
+          description: Unauthorized
+        "409":
+          description: Already attempted
+
   /api/progress/{userId}:
     get:
-      summary: Get user progress
+      summary: Get user progress (legacy - prefer /api/progress/me)
+      deprecated: true
       parameters:
         - name: userId
           in: path
@@ -91,40 +181,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/Progress"
 
-  /api/progress/{userId}/lesson-complete:
-    post:
-      summary: Mark a lesson as completed and add XP
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [lessonId, xp]
-              properties:
-                lessonId:
-                  type: string
-                xp:
-                  type: number
-      responses:
-        "200":
-          description: Updated progress
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Progress"
-
-
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     Course:
       type: object
+      required: [id, title, lessonIds]
       properties:
         id:
           type: string
@@ -135,8 +202,35 @@ components:
           items:
             type: string
 
+    LessonStepVideo:
+      type: object
+      required: [type, videoUrl]
+      properties:
+        type:
+          type: string
+          enum: [video]
+        videoUrl:
+          type: string
+
+    LessonStepQCM:
+      type: object
+      required: [type, question, choices, correctIndex]
+      properties:
+        type:
+          type: string
+          enum: [qcm]
+        question:
+          type: string
+        choices:
+          type: array
+          items:
+            type: string
+        correctIndex:
+          type: integer
+
     Lesson:
       type: object
+      required: [id, title, steps]
       properties:
         id:
           type: string
@@ -145,10 +239,13 @@ components:
         steps:
           type: array
           items:
-            type: object
+            oneOf:
+              - $ref: "#/components/schemas/LessonStepVideo"
+              - $ref: "#/components/schemas/LessonStepQCM"
 
     DictionaryEntry:
       type: object
+      required: [id, word, videoUrl]
       properties:
         id:
           type: string
@@ -159,12 +256,76 @@ components:
 
     Progress:
       type: object
+      required: [userId, xp, completedLessons]
       properties:
         userId:
           type: string
         xp:
-          type: number
+          type: integer
         completedLessons:
           type: array
           items:
             type: string
+        lastLessonId:
+          type: string
+          nullable: true
+        lastUserAnswer:
+          type: integer
+          nullable: true
+        lastWasCorrect:
+          type: boolean
+          nullable: true
+        lastXpEarned:
+          type: integer
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    AuthGoogleRequest:
+      type: object
+      required: [idToken]
+      properties:
+        idToken:
+          type: string
+
+    AuthGoogleResponse:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken:
+          type: string
+
+    LessonAttempt:
+      type: object
+      required: [userId, lessonId, selectedIndex, isCorrect, xpAwarded]
+      properties:
+        userId:
+          type: string
+        lessonId:
+          type: string
+        selectedIndex:
+          type: integer
+        isCorrect:
+          type: boolean
+        xpAwarded:
+          type: integer
+
+    AttemptCreateRequest:
+      type: object
+      required: [lessonId, selectedIndex]
+      properties:
+        lessonId:
+          type: string
+        selectedIndex:
+          type: integer
+
+    AttemptCreateResponse:
+      type: object
+      required: [attempt, progress]
+      properties:
+        attempt:
+          $ref: "#/components/schemas/LessonAttempt"
+        progress:
+          $ref: "#/components/schemas/Progress"
