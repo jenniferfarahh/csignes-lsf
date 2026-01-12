@@ -2,19 +2,139 @@ openapi: 3.0.3
 info:
   title: csignes-lsf API
   version: 1.0.0
+
 servers:
   - url: http://localhost:3001
+
 paths:
   /health:
     get:
       summary: Health check
       responses:
         "200":
-          description: Server is up
+          description: OK
+
+  /api/courses:
+    get:
+      summary: Get all courses
+      responses:
+        "200":
+          description: List of courses
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
+                type: array
+                items:
+                  $ref: "#/components/schemas/Course"
+
+  /api/courses/{courseId}:
+    get:
+      summary: Get course by ID
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Course details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+
+  /api/lessons/{lessonId}:
+    get:
+      summary: Get lesson by ID
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lesson
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lesson"
+
+  /api/dictionary:
+    get:
+      summary: Get dictionary entries
+      responses:
+        "200":
+          description: Dictionary
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DictionaryEntry"
+
+  /api/progress/{userId}:
+    get:
+      summary: Get user progress
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Progress"
+
+components:
+  schemas:
+    Course:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        lessonIds:
+          type: array
+          items:
+            type: string
+
+    Lesson:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        steps:
+          type: array
+          items:
+            type: object
+
+    DictionaryEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        word:
+          type: string
+        videoUrl:
+          type: string
+
+    Progress:
+      type: object
+      properties:
+        userId:
+          type: string
+        xp:
+          type: number
+        completedLessons:
+          type: array
+          items:
+            type: string

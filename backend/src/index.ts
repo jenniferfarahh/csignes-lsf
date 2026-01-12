@@ -22,6 +22,65 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+// MOCK DATA
+const course = {
+  id: "course-1",
+  title: "Bases de la LSF",
+  lessonIds: ["lesson-1"],
+};
+
+const lesson = {
+  id: "lesson-1",
+  title: "Dire bonjour",
+  steps: [
+    {
+      type: "video",
+      videoUrl: "/videos/bonjour.mp4",
+    },
+    {
+      type: "qcm",
+      question: "Que signifie ce signe ?",
+      choices: ["Bonjour", "Merci", "Au revoir"],
+      correctIndex: 0,
+    },
+  ],
+};
+
+const dictionary = [
+  {
+    id: "sign-1",
+    word: "Bonjour",
+    videoUrl: "/videos/bonjour.mp4",
+  },
+];
+
+const progress = {
+  userId: "demo",
+  xp: 20,
+  completedLessons: ["lesson-1"],
+};
+
+// ROUTES
+app.get("/api/courses", (_req, res) => {
+  res.json([course]);
+});
+
+app.get("/api/courses/:courseId", (_req, res) => {
+  res.json(course);
+});
+
+app.get("/api/lessons/:lessonId", (_req, res) => {
+  res.json(lesson);
+});
+
+app.get("/api/dictionary", (_req, res) => {
+  res.json(dictionary);
+});
+
+app.get("/api/progress/:userId", (_req, res) => {
+  res.json(progress);
+});
+
 // Swagger UI
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDoc));
 
