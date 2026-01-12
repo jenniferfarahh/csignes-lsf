@@ -73,7 +73,7 @@ csignes-apprendre-lsf/
 
 ---
 
-## 🗄️ Base de données
+## Base de données
 
 La base de données est gérée via **PostgreSQL dans Docker**, afin de garantir :
 
@@ -157,7 +157,7 @@ Exemple :
 
 ---
 
-## 📈 Progression utilisateur
+## Progression utilisateur
 
 Pour chaque utilisateur :
 
