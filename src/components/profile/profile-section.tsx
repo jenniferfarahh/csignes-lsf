@@ -7,10 +7,13 @@ import { Settings, Edit, Share2, Award, User, Mail, Calendar } from "lucide-reac
 import { EditProfile } from "./edit-profile";
 import { Settings as SettingsView } from "./settings";
 import { useToast } from "@/hooks/use-toast";
+import { useProgress } from "@/hooks/useProgress";
 
 export function ProfileSection() {
   const { toast } = useToast();
   const [view, setView] = useState<'main' | 'edit' | 'settings'>('main');
+  const { data: progress, isLoading, isError } = useProgress("demo");
+
 
   if (view === 'edit') {
     return <EditProfile onBack={() => setView('main')} />;
@@ -31,6 +34,9 @@ export function ProfileSection() {
     gamesPlayed: 25,
   };
 
+  const totalPoints = progress?.xp ?? user.totalPoints;
+  const coursesCompleted = progress?.completedLessons?.length ?? user.coursesCompleted;
+
   const badges = [
     { name: "Premier pas", color: "bg-success" },
     { name: "Alphabet maîtrisé", color: "bg-primary" },
@@ -39,9 +45,9 @@ export function ProfileSection() {
   ];
 
   const stats = [
-    { label: "Cours terminés", value: user.coursesCompleted, icon: Award },
+    { label: "Cours terminés", value: coursesCompleted, icon: Award },
     { label: "Jeux joués", value: user.gamesPlayed, icon: User },
-    { label: "Points totaux", value: user.totalPoints, icon: Mail },
+    { label: "Points totaux", value: totalPoints, icon: Mail },
   ];
 
   return (
@@ -54,6 +60,20 @@ export function ProfileSection() {
           Gérer mes informations et mes préférences
         </p>
       </div>
+
+      {isLoading && (
+        <Card className="p-4 mb-4">
+          <p className="text-sm text-muted-foreground">Chargement de la progression...</p>
+        </Card>
+      )}
+
+      {isError && (
+        <Card className="p-4 mb-4">
+          <p className="text-sm text-destructive">
+            Impossible de charger la progression depuis l’API. (Fallback local)
+          </p>
+        </Card>
+      )}
 
       {/* User Info Card */}
       <Card className="p-6 mb-6">
@@ -70,7 +90,7 @@ export function ProfileSection() {
             <div className="flex flex-wrap items-center gap-2 mt-2">
               <Badge variant="outline" className="text-xs sm:text-sm">{user.level}</Badge>
               <Badge className="bg-primary text-primary-foreground text-xs sm:text-sm">
-                {user.totalPoints} pts
+                {totalPoints} pts
               </Badge>
             </div>
           </div>
