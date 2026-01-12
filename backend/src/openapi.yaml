@@ -91,6 +91,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/Progress"
 
+  /api/progress/{userId}/lesson-complete:
+    post:
+      summary: Mark a lesson as completed and add XP
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lessonId, xp]
+              properties:
+                lessonId:
+                  type: string
+                xp:
+                  type: number
+      responses:
+        "200":
+          description: Updated progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Progress"
+
+
 components:
   schemas:
     Course:

@@ -54,7 +54,7 @@ const dictionary = [
   },
 ];
 
-const progress = {
+let progress = {
   userId: "demo",
   xp: 20,
   completedLessons: ["lesson-1"],
@@ -79,6 +79,24 @@ app.get("/api/dictionary", (_req, res) => {
 
 app.get("/api/progress/:userId", (_req, res) => {
   res.json(progress);
+});
+
+app.post("/api/progress/:userId/lesson-complete", (req, res) => {
+  const { lessonId, xp } = req.body as { lessonId?: string; xp?: number };
+
+  if (!lessonId || typeof xp !== "number") {
+    return res.status(400).json({ error: "lessonId and xp are required" });
+  }
+
+  // Update XP
+  progress.xp += xp;
+
+  // Add lesson if not already completed
+  if (!progress.completedLessons.includes(lessonId)) {
+    progress.completedLessons.push(lessonId);
+  }
+
+  return res.json(progress);
 });
 
 // Swagger UI
