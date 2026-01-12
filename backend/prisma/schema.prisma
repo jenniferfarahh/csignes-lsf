@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Lesson {
+  id           String   @id
+  title        String
+  videoUrl     String
+  question     String
+  choices      String[]
+  correctIndex Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attempts LessonAttempt[]
+}
+
+model UserProgress {
+  userId           String   @id
+  xp               Int      @default(0)
+  completedLessons String[] @default([])
+
+  lastLessonId   String?
+  lastUserAnswer Int?
+  lastWasCorrect Boolean?
+  lastXpEarned   Int?
+  updatedAt      DateTime @updatedAt
+
+  attempts LessonAttempt[]
+}
+
+model LessonAttempt {
+  id       String @id @default(cuid())
+  userId   String
+  lessonId String
+
+  selectedIndex Int
+  isCorrect     Boolean
+  xpAwarded     Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  user   UserProgress @relation(fields: [userId], references: [userId])
+  lesson Lesson       @relation(fields: [lessonId], references: [id])
+
+  @@unique([userId, lessonId]) // 1 seule tentative par user pour cette leçon
+}

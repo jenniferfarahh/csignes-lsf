@@ -24,6 +24,7 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
   const { data: apiLesson, isLoading, isError } = useLesson("lesson-1");
   const [selectedChoiceIndex, setSelectedChoiceIndex] = useState<number | null>(null);
   const lessonId = "lesson-1";
+  const userId = "demo";
 
   const [alreadyDone, setAlreadyDone] = useState(false);
   const [isCheckingProgress, setIsCheckingProgress] = useState(true);
@@ -40,7 +41,7 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
 
     (async () => {
       try {
-        const progress = await apiGet<{ completedLessons: string[] }>(`/api/progress/demo`);
+        const progress = await apiGet<{ completedLessons: string[] }>(`/api/progress/${userId}`);
         if (!cancelled) {
           setAlreadyDone(progress.completedLessons?.includes(lessonId) ?? false);
         }
@@ -449,7 +450,7 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
 
                   if (ok) {
                     try {
-                      await apiPost(`/api/progress/demo/lesson-complete`, {
+                      await apiPost(`/api/progress/${userId}/lesson-complete`, {
                         lessonId,
                         xp: 10,
                       });
