@@ -5,6 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Play, BookOpen, CheckCircle, Clock, Star, ArrowRight, ArrowLeft } from "lucide-react";
 import { LessonResults } from "./lesson-results";
+import { useLesson } from "@/hooks/useLesson";
+import { apiPost } from "@/lib/apiPost";
+import { useToast } from "@/hooks/use-toast";
+
 
 interface LessonStep {
   id: number;
@@ -24,6 +28,9 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
   const [isCompleted, setIsCompleted] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [selectedLesson, setSelectedLesson] = useState<number | null>(null);
+  const { toast } = useToast();
+  const { data: apiLesson, isLoading, isError } = useLesson("lesson-1");
+
 
   // Mock results data
   const todayResults = {
@@ -67,7 +74,7 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
   ];
 
   // Mock daily lesson data
-  const lesson = {
+  const mockLesson = {
     title: "Les membres de la famille",
     description: "Apprends à signer tous les membres de ta famille",
     difficulty: "Débutant",
@@ -99,6 +106,27 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
       },
     ],
   };
+    const lesson = apiLesson
+    ? {
+        title: apiLesson.title,
+        description: "Leçon chargée depuis l’API",
+        difficulty: "Débutant",
+        estimatedTime: "—",
+        steps: apiLesson.steps.map((s, idx) => ({
+          id: idx + 1,
+          type: s.type === "qcm" ? ("quiz" as const) : ("video" as const),
+          title:
+            s.type === "qcm"
+              ? "Question (QCM)"
+              : `Vidéo ${idx + 1}`,
+          duration: "—",
+          videoUrl: s.videoUrl,
+          question: s.question,
+          choices: s.choices,
+        })),
+      }
+    : mockLesson;
+
 
   const getStepIcon = (type: string) => {
     switch (type) {
@@ -138,6 +166,20 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
             Ta leçon quotidienne personnalisée
           </p>
         </div>
+
+        {isLoading && (
+          <Card className="p-4 mb-4">
+            <p className="text-sm text-muted-foreground">Chargement de la leçon...</p>
+          </Card>
+        )}
+
+        {isError && (
+          <Card className="p-4 mb-4">
+            <p className="text-sm text-destructive">
+              Impossible de charger la leçon depuis l’API. (Fallback local)
+            </p>
+          </Card>
+        )}
 
         {/* Lesson Preview */}
         <Card className="p-6 mb-6">
@@ -269,11 +311,48 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
           </p>
           
           {/* Video placeholder */}
-          <div className="aspect-video bg-muted rounded-lg flex items-center justify-center mb-6">
-            <div className="text-center">
-              <Play size={48} className="mx-auto mb-2 text-muted-foreground" />
-              <p className="text-muted-foreground">Contenu de la leçon</p>
-            </div>
+          <div className="aspect-video bg-muted rounded-lg flex items-center justify-center mb-6 overflow-hidden">
+            {(() => {
+              const step: any = lesson.steps[currentStep];
+              if (step?.type === "video" && step?.videoUrl) {
+                return (
+                  <video
+                    src={step.videoUrl}
+                    controls
+                    className="w-full h-full object-cover"
+                  />
+                );
+              }
+
+              if (step?.type === "quiz" && step?.question) {
+                return (
+                  <div className="p-4 w-full">
+                    <p className="font-semibold mb-3">{step.question}</p>
+                    <div className="space-y-2">
+                      {(step.choices ?? []).map((choice: string, i: number) => (
+                        <Button
+                          key={i}
+                          variant="outline"
+                          className="w-full justify-start"
+                          onClick={() => {
+                            toast({ title: "Réponse choisie", description: choice });
+                          }}
+                        >
+                          {choice}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="text-center">
+                  <Play size={48} className="mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-muted-foreground">Contenu de la leçon</p>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="flex gap-3">
@@ -287,15 +366,34 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
               </Button>
             )}
             <Button 
-              onClick={() => {
+              onClick={async() => {
                 if (currentStep < lesson.steps.length - 1) {
                   setCurrentStep(currentStep + 1);
                 } else {
+                  try {
+                    await apiPost(`/api/progress/demo/lesson-complete`, {
+                      lessonId: "lesson-1",
+                      xp: 10,
+                    });
+
+                    toast({
+                      title: "Leçon terminée ✅",
+                      description: "+10 XP ajoutés à ton profil",
+                    });
+                  } catch (e) {
+                    toast({
+                      title: "Erreur",
+                      description: "Impossible d’enregistrer la progression (API).",
+                      variant: "destructive",
+                    });
+                  }
+
                   setIsCompleted(true);
                   setIsStarted(false);
                   setCurrentStep(0);
                   setSelectedLesson(-1);
                 }
+
               }}
               className="flex-1"
             >
