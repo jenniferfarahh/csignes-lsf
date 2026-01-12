@@ -8,7 +8,7 @@ import { useLesson } from "@/hooks/useLesson";
 import { apiPost } from "@/lib/apiPost";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
-import { apiGet } from "@/lib/api"; // ou crée apiGet si tu l’as pas
+import { API_BASE_URL, apiGet } from "@/lib/api"; // ou crée apiGet si tu l’as pas
 
 interface DailyLessonProps {
   onBack?: () => void;
@@ -24,7 +24,6 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
   const { data: apiLesson, isLoading, isError } = useLesson("lesson-1");
   const [selectedChoiceIndex, setSelectedChoiceIndex] = useState<number | null>(null);
   const lessonId = "lesson-1";
-  const userId = "demo";
 
   const [alreadyDone, setAlreadyDone] = useState(false);
   const [isCheckingProgress, setIsCheckingProgress] = useState(true);
@@ -37,13 +36,31 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
   }>(null);
 
   useEffect(() => {
+    if (!apiLesson) return;
+
     let cancelled = false;
 
     (async () => {
       try {
-        const progress = await apiGet<{ completedLessons: string[] }>(`/api/progress/${userId}`);
+        const attempt = await apiGet<{
+          selectedIndex: number;
+          isCorrect: boolean;
+          xpAwarded: number;
+        }>(`/api/progress/me/lesson/${lessonId}/attempt`);
+
         if (!cancelled) {
-          setAlreadyDone(progress.completedLessons?.includes(lessonId) ?? false);
+          setAlreadyDone(true);
+
+          const qcm = apiLesson.steps.find(s => s.type === "qcm");
+
+          if (qcm) {
+            setFinalResult({
+              ok: attempt.isCorrect,
+              xp: attempt.xpAwarded,
+              userAnswer: qcm.choices?.[attempt.selectedIndex] ?? "—",
+              correctAnswer: qcm.choices?.[qcm.correctIndex ?? 0] ?? "—",
+            });
+          }
         }
       } catch {
         if (!cancelled) setAlreadyDone(false);
@@ -55,7 +72,7 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
     return () => {
       cancelled = true;
     };
-  }, [lessonId]);
+  }, [apiLesson]);
 
 
   // Mock results data
@@ -199,42 +216,56 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
             </p>
           </Card>
         )}
-        {showResults && finalResult && (
-        <Card className="p-6 mb-6">
-          <h2 className="text-xl font-bold mb-2">Résultat du challenge</h2>
 
-          <p className={`font-semibold mb-3 ${finalResult.ok ? "text-success" : "text-destructive"}`}>
-            {finalResult.ok ? "Bravo ✅ Bonne réponse" : "Dommage ❌ Mauvaise réponse"}
-          </p>
 
-          <div className="text-sm space-y-1 mb-4">
-            <p><span className="font-medium">Ta réponse :</span> {finalResult.userAnswer}</p>
-            <p><span className="font-medium">Bonne réponse :</span> {finalResult.correctAnswer}</p>
-            <p><span className="font-medium">XP gagnés :</span> {finalResult.xp}</p>
-          </div>
 
-          <Button className="w-full" variant="outline" onClick={() => setShowResults(false)}>
-            Fermer
-          </Button>
-        </Card>
-      )}
+          {showResults && finalResult && (
+            <Card className="p-6 mb-6">
+              <h2 className="text-xl font-bold mb-2">Résultat du challenge</h2>
 
-      {alreadyDone && !finalResult && (
-        <Card className="p-6 mb-6">
-          <h2 className="text-xl font-bold mb-2">Challenge déjà terminé ✅</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Tu as déjà complété le challenge du jour. Reviens demain pour un nouveau challenge.
-          </p>
+              {(() => {
+                const videoStep = apiLesson?.steps.find((s) => s.type === "video");
+                if (!videoStep?.videoUrl) return null;
 
-          <Button
-            className="w-full"
-            variant="outline"
-            onClick={() => setShowResults(true)}
-          >
-            Voir le résultat
-          </Button>
-        </Card>
-      )}
+                return (
+                  <div className="aspect-video rounded-lg overflow-hidden bg-black mb-4">
+                    <video
+                      controls
+                      className="w-full h-full"
+                      src={`${API_BASE_URL}${videoStep.videoUrl}`}
+                    />
+                  </div>
+                );
+              })()}
+
+              <p className={`font-semibold mb-3 ${finalResult.ok ? "text-success" : "text-destructive"}`}>
+                {finalResult.ok ? "Bravo ✅ Bonne réponse" : "Dommage ❌ Mauvaise réponse"}
+              </p>
+
+              <div className="text-sm space-y-1 mb-4">
+                <p><span className="font-medium">Ta réponse :</span> {finalResult.userAnswer}</p>
+                <p><span className="font-medium">Bonne réponse :</span> {finalResult.correctAnswer}</p>
+                <p><span className="font-medium">XP gagnés :</span> {finalResult.xp}</p>
+              </div>
+
+              <Button className="w-full" variant="outline" onClick={() => setShowResults(false)}>
+                Fermer
+              </Button>
+            </Card>
+          )}
+
+        {alreadyDone && !showResults && (
+          <Card className="p-6 mb-6">
+            <h2 className="text-xl font-bold mb-2">Challenge déjà terminé ✅</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Tu as déjà complété le challenge du jour.
+            </p>
+
+            <Button className="w-full" variant="outline" onClick={() => setShowResults(true)}>
+              Voir le résultat
+            </Button>
+          </Card>
+        )}
 
 
 
@@ -280,10 +311,9 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
           </div>
 
         <Button
-          disabled={isCheckingProgress || alreadyDone}
+          disabled={isCheckingProgress}
           onClick={() => {
             if (alreadyDone) {
-              // si déjà fait, on affiche le résultat (si tu l’as)
               setShowResults(true);
               return;
             }
@@ -292,11 +322,7 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
           }}
           className="w-full h-12 text-lg font-semibold"
         >
-          {isCheckingProgress
-            ? "Vérification..."
-            : alreadyDone
-              ? "Challenge déjà terminé"
-              : "Commencer la leçon"}
+          {isCheckingProgress ? "Vérification..." : alreadyDone ? "Voir le résultat" : "Commencer la leçon"}
           <ArrowRight className="ml-2" size={20} />
         </Button>
 
@@ -404,11 +430,12 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
 
             </div>
           ) : (
-            <div className="aspect-video bg-muted rounded-lg flex items-center justify-center mb-6">
-              <div className="text-center">
-                <Play size={48} className="mx-auto mb-2 text-muted-foreground" />
-                <p className="text-muted-foreground">Contenu vidéo</p>
-              </div>
+            <div className="aspect-video rounded-lg overflow-hidden mb-6 bg-black">
+              <video
+                controls
+                className="w-full h-full"
+                src={`${API_BASE_URL}${step?.videoUrl ?? ""}`}
+              />
             </div>
           )}
 
@@ -448,22 +475,19 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
                     userAnswer,
                   });
 
-                  if (ok) {
+                  if (!alreadyDone) {
                     try {
-                      await apiPost(`/api/progress/${userId}/lesson-complete`, {
+                      await apiPost(`/api/attempts`, {
                         lessonId,
-                        xp: 10,
+                        selectedIndex: selectedChoiceIndex,
                       });
 
-                      setAlreadyDone(true); 
+                      setAlreadyDone(true);
                     } catch (e) {
-                      toast({
-                        title: "Erreur",
-                        description: "Impossible d’enregistrer la progression (API).",
-                        variant: "destructive",
-                      });
+                      // si 409 => déjà tenté, on ignore
                     }
                   }
+
 
                   setIsCompleted(true);
                   setIsStarted(false);

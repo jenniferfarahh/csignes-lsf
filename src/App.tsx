@@ -1,27 +1,29 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import Login from "@/pages/Login";
 import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
+import { RequireAuth } from "@/components/RequireAuth";
+import { isLoggedIn } from "@/lib/auth";
 
-const queryClient = new QueryClient();
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* si déjà loggé, /login redirige vers / */}
+        <Route
+          path="/login"
+          element={isLoggedIn() ? <Navigate to="/" replace /> : <Login />}
+        />
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
-
-export default App;
+        {/* Home protégée */}
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <Index />
+            </RequireAuth>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  );
+}

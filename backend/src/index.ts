@@ -6,6 +6,13 @@ import path from "node:path";
 import YAML from "yaml";
 import { prisma } from "./prisma";
 
+import { fileURLToPath } from "node:url";
+import { OAuth2Client } from "google-auth-library";
+import { requireAuth, AuthRequest } from "./middleware/requireAuth";
+
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
 
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
@@ -13,6 +20,17 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 // Middlewares
 app.use(cors({ origin: true }));
 app.use(express.json());
+
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Sert backend/src/public/videos via /videos
+app.use(
+  "/videos",
+  express.static(path.join(__dirname, "public/videos"))
+);
+
 
 // Load OpenAPI YAML
 const openapiPath = path.join(process.cwd(), "src", "openapi.yaml");
@@ -92,9 +110,32 @@ app.get("/api/dictionary", (_req, res) => {
   res.json(dictionary);
 });
 
-app.get("/api/progress/:userId", async (req, res) => {
-  const { userId } = req.params;
+app.post("/api/auth/google", async (req, res) => {
+  const { idToken } = req.body as { idToken?: string };
+  if (!idToken) return res.status(400).json({ error: "idToken missing" });
 
+  const ticket = await googleClient.verifyIdToken({
+    idToken,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+
+  const payload = ticket.getPayload();
+  if (!payload?.sub) return res.status(401).json({ error: "Invalid token" });
+
+  const userId = payload.sub;
+
+  await prisma.userProgress.upsert({
+    where: { userId },
+    update: {},
+    create: { userId, xp: 0, completedLessons: [] },
+  });
+
+  // Simple: on renvoie le même idToken pour l’utiliser comme accessToken
+  return res.json({ accessToken: idToken });
+});
+
+app.get("/api/progress/me", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
   const p = await prisma.userProgress.upsert({
     where: { userId },
     update: {},
@@ -104,27 +145,24 @@ app.get("/api/progress/:userId", async (req, res) => {
   res.json(p);
 });
 
-app.get("/api/progress/:userId/lesson/:lessonId/attempt", async (req, res) => {
-  const { userId, lessonId } = req.params;
+app.get("/api/progress/me/lesson/:lessonId/attempt", requireAuth, async (req: AuthRequest, res) => {
+    const userId = req.userId!;
+  const { lessonId } = req.params;
 
   const attempt = await prisma.lessonAttempt.findUnique({
     where: { userId_lessonId: { userId, lessonId } },
   });
 
   if (!attempt) return res.status(404).json({ error: "No attempt" });
-
   res.json(attempt);
 });
 
-app.post("/api/attempts", async (req, res) => {
-  const { userId, lessonId, selectedIndex } = req.body as {
-    userId?: string;
-    lessonId?: string;
-    selectedIndex?: number;
-  };
+app.post("/api/attempts", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+  const { lessonId, selectedIndex } = req.body as { lessonId?: string; selectedIndex?: number };
 
-  if (!userId || !lessonId || typeof selectedIndex !== "number") {
-    return res.status(400).json({ error: "userId, lessonId, selectedIndex are required" });
+  if (!lessonId || typeof selectedIndex !== "number") {
+    return res.status(400).json({ error: "lessonId, selectedIndex required" });
   }
 
   const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
@@ -135,21 +173,19 @@ app.post("/api/attempts", async (req, res) => {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 1) créer attempt (bloque si déjà existe grâce au @@unique)
       const attempt = await tx.lessonAttempt.create({
         data: { userId, lessonId, selectedIndex, isCorrect, xpAwarded },
       });
 
-      // 2) update progress
       const progress = await tx.userProgress.upsert({
         where: { userId },
         update: {
           xp: { increment: xpAwarded },
+          completedLessons: { push: lessonId },
           lastLessonId: lessonId,
           lastUserAnswer: selectedIndex,
           lastWasCorrect: isCorrect,
           lastXpEarned: xpAwarded,
-          completedLessons: lessonId ? { push: lessonId } : undefined,
         },
         create: {
           userId,
@@ -165,12 +201,12 @@ app.post("/api/attempts", async (req, res) => {
       return { attempt, progress };
     });
 
-    return res.json(result);
-  } catch (e: any) {
-    // unique constraint => déjà tenté
-    return res.status(409).json({ error: "Already attempted" });
+    res.json(result);
+  } catch {
+    res.status(409).json({ error: "Already attempted" });
   }
 });
+
 
 // Swagger UI
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDoc));
