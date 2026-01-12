@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Search, BookOpen, Video, Star, ArrowLeft } from "lucide-react";
+import { useDictionary } from "@/hooks/useDictionary";
 
 interface Sign {
   id: number;
@@ -18,6 +19,21 @@ interface Sign {
 interface DictionarySectionProps {
   onBack?: () => void;
 }
+
+type Difficulty = "facile" | "moyen" | "difficile";
+
+function toUiSign(entry: { id: string; word: string; videoUrl: string }): Sign {
+  return {
+    id: Number(entry.id.replace(/\D/g, "")) || 999, // safe conversion
+    word: entry.word,
+    description: "Entrée depuis l’API",
+    category: "salutations",
+    difficulty: "facile",
+    videoUrl: entry.videoUrl,
+    isFavorite: false,
+  };
+}
+
 
 export function DictionarySection({ onBack }: DictionarySectionProps) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -54,6 +70,8 @@ export function DictionarySection({ onBack }: DictionarySectionProps) {
       difficulty: "moyen",
     },
   ]);
+  const { data: apiDictionary, isLoading, isError } = useDictionary();
+
 
   const toggleFavorite = (id: number) => {
     setSigns(signs.map(sign => 
@@ -70,11 +88,15 @@ export function DictionarySection({ onBack }: DictionarySectionProps) {
     { id: "emotions", label: "Émotions" },
   ];
 
-  const filteredSigns = signs.filter(sign => {
+  const apiSigns: Sign[] = (apiDictionary ?? []).map(toUiSign);
+
+  const sourceSigns = apiSigns.length > 0 ? apiSigns : signs;
+
+  const filteredSigns = sourceSigns.filter(sign => {
     const matchesSearch = sign.word.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          sign.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === "tous" || 
-                           selectedCategory === "favoris" && sign.isFavorite ||
+                           (selectedCategory === "favoris" && sign.isFavorite) ||
                            sign.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -127,6 +149,20 @@ export function DictionarySection({ onBack }: DictionarySectionProps) {
           </Button>
         ))}
       </div>
+
+      {isLoading && (
+        <Card className="p-4 mb-4">
+          <p className="text-sm text-muted-foreground">Chargement du dictionnaire...</p>
+        </Card>
+      )}
+
+      {isError && (
+        <Card className="p-4 mb-4">
+          <p className="text-sm text-destructive">
+            Impossible de charger le dictionnaire depuis l’API. (Fallback local)
+          </p>
+        </Card>
+      )}
 
       {/* Signs List */}
       <div className="space-y-4">
