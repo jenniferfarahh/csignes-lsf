@@ -6,9 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Play, BookOpen, GraduationCap, Clock } from "lucide-react";
 import tutorialsIcon from "@/assets/tutorials-icon.jpg";
+import { useCourses } from "@/hooks/useCourses";
 
 export function CoursesSection() {
   const [viewingArticle, setViewingArticle] = useState(false);
+  const { data: apiCourses, isLoading, isError } = useCourses();
 
   if (viewingArticle) {
     return <ArticleView onBack={() => setViewingArticle(false)} />;
@@ -145,22 +147,51 @@ export function CoursesSection() {
         </TabsList>
 
         <TabsContent value="videos" className="space-y-4">
-          {courses.videos.map((course) => (
+          {isLoading && (
+            <Card className="p-4">
+              <p className="text-sm text-muted-foreground">Chargement des cours...</p>
+            </Card>
+          )}
+
+          {isError && (
+            <Card className="p-4">
+              <p className="text-sm text-destructive">
+                Impossible de charger les cours depuis l’API. (Fallback local)
+              </p>
+            </Card>
+          )}
+
+          {/* API courses (demo) */}
+          {apiCourses?.map((c) => (
             <CourseCard
-              key={course.id}
-              title={course.title}
-              description={course.description}
-              type={course.type}
-              duration={course.duration}
-              progress={course.progress}
-              isCompleted={course.isCompleted}
-              isNew={course.isNew}
-              thumbnail={course.thumbnail}
-              onStart={() => {
-                alert(`Début du cours: ${course.title}`);
-              }}
+              key={c.id}
+              title={c.title}
+              description={`Leçons: ${c.lessonIds.join(", ")}`}
+              type={"video"}
+              duration={"—"}
+              progress={0}
+              onStart={() => alert(`Cours API: ${c.title}`)}
             />
           ))}
+
+          {/* Fallback local (ton code existant) */}
+          {!apiCourses?.length &&
+            courses.videos.map((course) => (
+              <CourseCard
+                key={course.id}
+                title={course.title}
+                description={course.description}
+                type={course.type}
+                duration={course.duration}
+                progress={course.progress}
+                isCompleted={course.isCompleted}
+                isNew={course.isNew}
+                thumbnail={course.thumbnail}
+                onStart={() => {
+                  alert(`Début du cours: ${course.title}`);
+                }}
+              />
+            ))}
         </TabsContent>
 
         <TabsContent value="articles" className="space-y-4">
