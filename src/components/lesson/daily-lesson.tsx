@@ -4,19 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Play, BookOpen, CheckCircle, Clock, Star, ArrowRight, ArrowLeft } from "lucide-react";
-import { LessonResults } from "./lesson-results";
 import { useLesson } from "@/hooks/useLesson";
 import { apiPost } from "@/lib/apiPost";
 import { useToast } from "@/hooks/use-toast";
-
-
-interface LessonStep {
-  id: number;
-  type: 'video' | 'practice' | 'quiz';
-  title: string;
-  duration: string;
-  isCompleted?: boolean;
-}
+import { useEffect } from "react";
+import { apiGet } from "@/lib/api"; // ou crée apiGet si tu l’as pas
 
 interface DailyLessonProps {
   onBack?: () => void;
@@ -30,6 +22,39 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
   const [selectedLesson, setSelectedLesson] = useState<number | null>(null);
   const { toast } = useToast();
   const { data: apiLesson, isLoading, isError } = useLesson("lesson-1");
+  const [selectedChoiceIndex, setSelectedChoiceIndex] = useState<number | null>(null);
+  const lessonId = "lesson-1";
+
+  const [alreadyDone, setAlreadyDone] = useState(false);
+  const [isCheckingProgress, setIsCheckingProgress] = useState(true);
+
+  const [finalResult, setFinalResult] = useState<null | {
+    ok: boolean;
+    correctAnswer: string;
+    userAnswer: string;
+    xp: number;
+  }>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const progress = await apiGet<{ completedLessons: string[] }>(`/api/progress/demo`);
+        if (!cancelled) {
+          setAlreadyDone(progress.completedLessons?.includes(lessonId) ?? false);
+        }
+      } catch {
+        if (!cancelled) setAlreadyDone(false);
+      } finally {
+        if (!cancelled) setIsCheckingProgress(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lessonId]);
 
 
   // Mock results data
@@ -115,14 +140,12 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
         steps: apiLesson.steps.map((s, idx) => ({
           id: idx + 1,
           type: s.type === "qcm" ? ("quiz" as const) : ("video" as const),
-          title:
-            s.type === "qcm"
-              ? "Question (QCM)"
-              : `Vidéo ${idx + 1}`,
+          title: s.type === "qcm" ? "Question (QCM)" : `Vidéo ${idx + 1}`,
           duration: "—",
           videoUrl: s.videoUrl,
           question: s.question,
           choices: s.choices,
+          correctIndex: s.correctIndex, 
         })),
       }
     : mockLesson;
@@ -148,20 +171,15 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
       <div className="p-4 pb-20">
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onBack}
-              className="p-2"
-            >
+            <Button variant="ghost" size="sm" onClick={onBack} className="p-2">
               <ArrowLeft size={20} />
             </Button>
+
             <div>
-              <h1 className="text-2xl font-bold text-foreground">
-                Leçon du jour
-              </h1>
+              <h1 className="text-2xl font-bold text-foreground">Leçon du jour</h1>
             </div>
           </div>
+
           <p className="text-muted-foreground">
             Ta leçon quotidienne personnalisée
           </p>
@@ -180,8 +198,47 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
             </p>
           </Card>
         )}
+        {showResults && finalResult && (
+        <Card className="p-6 mb-6">
+          <h2 className="text-xl font-bold mb-2">Résultat du challenge</h2>
+
+          <p className={`font-semibold mb-3 ${finalResult.ok ? "text-success" : "text-destructive"}`}>
+            {finalResult.ok ? "Bravo ✅ Bonne réponse" : "Dommage ❌ Mauvaise réponse"}
+          </p>
+
+          <div className="text-sm space-y-1 mb-4">
+            <p><span className="font-medium">Ta réponse :</span> {finalResult.userAnswer}</p>
+            <p><span className="font-medium">Bonne réponse :</span> {finalResult.correctAnswer}</p>
+            <p><span className="font-medium">XP gagnés :</span> {finalResult.xp}</p>
+          </div>
+
+          <Button className="w-full" variant="outline" onClick={() => setShowResults(false)}>
+            Fermer
+          </Button>
+        </Card>
+      )}
+
+      {alreadyDone && !finalResult && (
+        <Card className="p-6 mb-6">
+          <h2 className="text-xl font-bold mb-2">Challenge déjà terminé ✅</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Tu as déjà complété le challenge du jour. Reviens demain pour un nouveau challenge.
+          </p>
+
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={() => setShowResults(true)}
+          >
+            Voir le résultat
+          </Button>
+        </Card>
+      )}
+
+
 
         {/* Lesson Preview */}
+      {!showResults && !alreadyDone && (
         <Card className="p-6 mb-6">
           <div className="text-center mb-6">
             <div className="w-20 h-20 bg-gradient-primary rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -221,21 +278,30 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
             })}
           </div>
 
-          <Button 
-            onClick={() => {
-              if (isCompleted) {
-                setSelectedLesson(-1);
-              } else {
-                setIsStarted(true);
-              }
-            }}
-            className="w-full h-12 text-lg font-semibold"
-          >
-            {isCompleted ? 'Voir mes résultats' : 'Commencer la leçon'}
-            <ArrowRight className="ml-2" size={20} />
-          </Button>
-        </Card>
+        <Button
+          disabled={isCheckingProgress || alreadyDone}
+          onClick={() => {
+            if (alreadyDone) {
+              // si déjà fait, on affiche le résultat (si tu l’as)
+              setShowResults(true);
+              return;
+            }
+            setShowResults(false);
+            setIsStarted(true);
+          }}
+          className="w-full h-12 text-lg font-semibold"
+        >
+          {isCheckingProgress
+            ? "Vérification..."
+            : alreadyDone
+              ? "Challenge déjà terminé"
+              : "Commencer la leçon"}
+          <ArrowRight className="ml-2" size={20} />
+        </Button>
 
+        </Card>
+        )}
+        
         {/* Previous Lessons */}
         <div>
           <h3 className="font-semibold mb-4">Leçons précédentes</h3>
@@ -269,6 +335,12 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
     );
   }
 
+  const step: any = lesson.steps[currentStep];
+  const question = step?.question ?? "Que signifie ce signe ?";
+  const choices: string[] = step?.choices ?? ["Bonjour", "Merci", "Au revoir"];
+  const correctIndex: number = step?.correctIndex ?? 0;
+
+
   // Lesson in progress view
   return (
     <div className="p-4 pb-20">
@@ -282,6 +354,7 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
             onClick={() => {
               setIsStarted(false);
               setCurrentStep(0);
+              setSelectedChoiceIndex(null);
             }}
           >
             <ArrowLeft className="mr-1" size={16} />
@@ -310,90 +383,95 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
             Durée estimée: {lesson.steps[currentStep]?.duration}
           </p>
           
-          {/* Video placeholder */}
-          <div className="aspect-video bg-muted rounded-lg flex items-center justify-center mb-6 overflow-hidden">
-            {(() => {
-              const step: any = lesson.steps[currentStep];
-              if (step?.type === "video" && step?.videoUrl) {
-                return (
-                  <video
-                    src={step.videoUrl}
-                    controls
-                    className="w-full h-full object-cover"
-                  />
-                );
-              }
+          {/* Step content */}
+          {lesson.steps[currentStep].type === "quiz" ? (
+            <div className="text-left mb-6">
+            <p className="font-semibold mb-3">{question}</p>
 
-              if (step?.type === "quiz" && step?.question) {
-                return (
-                  <div className="p-4 w-full">
-                    <p className="font-semibold mb-3">{step.question}</p>
-                    <div className="space-y-2">
-                      {(step.choices ?? []).map((choice: string, i: number) => (
-                        <Button
-                          key={i}
-                          variant="outline"
-                          className="w-full justify-start"
-                          onClick={() => {
-                            toast({ title: "Réponse choisie", description: choice });
-                          }}
-                        >
-                          {choice}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              }
+            <div className="space-y-2">
+              {choices.map((choice, index) => (
+                <Button
+                  key={index}
+                  variant={selectedChoiceIndex === index ? "default" : "outline"}
+                  className="w-full justify-start"
+                  onClick={() => setSelectedChoiceIndex(index)}
+                >
+                  {choice}
+                </Button>
+              ))}
+            </div>
 
-              return (
-                <div className="text-center">
-                  <Play size={48} className="mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-muted-foreground">Contenu de la leçon</p>
-                </div>
-              );
-            })()}
-          </div>
+            </div>
+          ) : (
+            <div className="aspect-video bg-muted rounded-lg flex items-center justify-center mb-6">
+              <div className="text-center">
+                <Play size={48} className="mx-auto mb-2 text-muted-foreground" />
+                <p className="text-muted-foreground">Contenu vidéo</p>
+              </div>
+            </div>
+          )}
+
 
           <div className="flex gap-3">
             {currentStep > 0 && (
-              <Button 
-                variant="outline" 
-                onClick={() => setCurrentStep(currentStep - 1)}
-                className="flex-1"
-              >
-                Précédent
-              </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedChoiceIndex(null);
+                setCurrentStep(currentStep - 1);
+              }}
+              className="flex-1"
+            >
+              Précédent
+            </Button>
             )}
             <Button 
+              disabled={lesson.steps[currentStep].type === "quiz" && selectedChoiceIndex === null}
               onClick={async() => {
                 if (currentStep < lesson.steps.length - 1) {
+                  setSelectedChoiceIndex(null);
                   setCurrentStep(currentStep + 1);
                 } else {
-                  try {
-                    await apiPost(`/api/progress/demo/lesson-complete`, {
-                      lessonId: "lesson-1",
-                      xp: 10,
-                    });
+                  if (selectedChoiceIndex === null) return;
 
-                    toast({
-                      title: "Leçon terminée ✅",
-                      description: "+10 XP ajoutés à ton profil",
-                    });
-                  } catch (e) {
-                    toast({
-                      title: "Erreur",
-                      description: "Impossible d’enregistrer la progression (API).",
-                      variant: "destructive",
-                    });
+                  const ok = selectedChoiceIndex === correctIndex;
+                  const xp = ok ? 10 : 0;
+
+                  const correctAnswer = choices[correctIndex] ?? "—";
+                  const userAnswer = choices[selectedChoiceIndex] ?? "—";
+
+                  setFinalResult({
+                    ok,
+                    xp,
+                    correctAnswer,
+                    userAnswer,
+                  });
+
+                  if (ok) {
+                    try {
+                      await apiPost(`/api/progress/demo/lesson-complete`, {
+                        lessonId,
+                        xp: 10,
+                      });
+
+                      setAlreadyDone(true); 
+                    } catch (e) {
+                      toast({
+                        title: "Erreur",
+                        description: "Impossible d’enregistrer la progression (API).",
+                        variant: "destructive",
+                      });
+                    }
                   }
 
                   setIsCompleted(true);
                   setIsStarted(false);
+                  setShowResults(true);
                   setCurrentStep(0);
+                  setSelectedChoiceIndex(null);
                   setSelectedLesson(-1);
-                }
 
+                }
               }}
               className="flex-1"
             >
