@@ -3,6 +3,7 @@ import { ProgressRing } from "@/components/ui/progress-ring";
 import { Card } from "@/components/ui/card";
 import { Flame, Calendar, Target } from "lucide-react";
 import heroImage from "@/assets/hero-image.jpg";
+import { useAuth } from "@/auth/AuthContext";
 
 interface HeroSectionProps {
   onStartLesson: () => void;
@@ -14,6 +15,7 @@ export function HeroSection({ onStartLesson }: HeroSectionProps) {
   const todayProgress = 75;
   const weeklyGoal = 5;
   const completedDays = 4;
+  const { user } = useAuth();
 
   return (
     <div className="relative overflow-hidden rounded-2xl md:rounded-3xl bg-card border shadow-sm p-4 md:p-6 mb-6">
@@ -23,7 +25,7 @@ export function HeroSection({ onStartLesson }: HeroSectionProps) {
       <div className="relative z-10">
         <div className="mb-4 md:mb-6">
           <h1 className="text-xl md:text-2xl font-bold mb-2 text-foreground">
-            Bonjour ! 👋
+            Bonjour {user?.firstName ?? ""} !
           </h1>
           <p className="text-muted-foreground text-base md:text-lg">
             Continuons à apprendre la LSF ensemble

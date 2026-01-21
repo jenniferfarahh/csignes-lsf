@@ -9,22 +9,23 @@ import { ProfileSection } from "@/components/profile/profile-section";
 import { DictionarySection } from "@/components/dictionary/dictionary-section";
 import { ChallengesSection } from "@/components/challenges/challenges-section";
 import { DailyLesson } from "@/components/lesson/daily-lesson";
+import { useProgress } from "@/hooks/useProgress";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('accueil');
+  const { data: progress } = useProgress();
+
 
   const renderContent = () => {
     switch (activeTab) {
       case 'jeux':
         return <GamesSection />;
-      case 'cours':
-        return <CoursesSection />;
+      case 'dictionnaire':
+        return <DictionarySection />;
       case 'historique':
         return <HistorySection />;
       case 'profil':
         return <ProfileSection />;
-      case 'dictionnaire':
-        return <DictionarySection onBack={() => setActiveTab('accueil')} />;
       case 'defis':
         return <ChallengesSection />;
       case 'lecon':

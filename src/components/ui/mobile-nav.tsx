@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Home, Gamepad2, Play, User, History } from "lucide-react";
+import { Home, Gamepad2, Play, User, History, BookOpen } from "lucide-react";
 
 interface MobileNavProps {
   activeTab: string;
@@ -11,7 +11,7 @@ export function MobileNav({ activeTab, onTabChange }: MobileNavProps) {
   const tabs = [
     { id: 'accueil', label: 'Accueil', icon: Home },
     { id: 'jeux', label: 'Jeux', icon: Gamepad2 },
-    { id: 'cours', label: 'Cours', icon: Play },
+    { id: "dictionnaire", label: "Dictionnaire", icon: BookOpen },
     { id: 'historique', label: 'Historique', icon: History },
     { id: 'profil', label: 'Profil', icon: User },
   ];

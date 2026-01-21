@@ -58,10 +58,6 @@ export function QuickActions({ onNavigate }: QuickActionsProps) {
 
   return (
     <div className="mb-6">
-      <h2 className="text-xl font-bold text-foreground mb-4">
-        Actions rapides
-      </h2>
-      
       <div className="grid grid-cols-2 gap-4">
         {actions.map((action) => {
           const Icon = action.icon;

@@ -1,42 +1,56 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Settings, Edit, Share2, Award, User, Mail, Calendar } from "lucide-react";
 import { EditProfile } from "./edit-profile";
 import { Settings as SettingsView } from "./settings";
 import { useToast } from "@/hooks/use-toast";
 import { useProgress } from "@/hooks/useProgress";
+import { useAuth } from "@/auth/AuthContext";
 
 export function ProfileSection() {
   const { toast } = useToast();
-  const [view, setView] = useState<'main' | 'edit' | 'settings'>('main');
-  const { data: progress, isLoading, isError } = useProgress("demo");
+  const [view, setView] = useState<"main" | "edit" | "settings">("main");
 
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
 
-  if (view === 'edit') {
-    return <EditProfile onBack={() => setView('main')} />;
+  // Progression réelle (au lieu de "demo")
+  const { data: progress, isLoading, isError } = useProgress();
+
+  if (view === "edit") {
+    return <EditProfile onBack={() => setView("main")} />;
   }
 
-  if (view === 'settings') {
-    return <SettingsView onBack={() => setView('main')} />;
+  if (view === "settings") {
+    return <SettingsView onBack={() => setView("main")} />;
   }
-  // Mock user data
-  const user = {
-    name: "Marie Dubois",
-    email: "marie.dubois@email.com",
-    joinDate: "Mars 2024",
-    level: "Débutant",
-    totalPoints: 2450,
-    badges: 8,
-    coursesCompleted: 12,
-    gamesPlayed: 25,
-  };
 
-  const totalPoints = progress?.xp ?? user.totalPoints;
-  const coursesCompleted = progress?.completedLessons?.length ?? user.coursesCompleted;
+  // Informations utilisateur depuis Google (/api/me via AuthContext)
+  const fullName = useMemo(() => {
+    const name = `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim();
+    return name || "Utilisateur";
+  }, [user]);
 
+  const email = user?.email ?? "";
+
+  const initials = useMemo(() => {
+    const f = (user?.firstName?.trim()?.[0] ?? "U").toUpperCase();
+    const l = (user?.lastName?.trim()?.[0] ?? "").toUpperCase();
+    return `${f}${l}`;
+  }, [user]);
+
+  // Stats depuis la progression
+  const xp = progress?.xp ?? 0;
+  const coursesCompleted = progress?.completedLessons?.length ?? 0;
+
+  // Niveau (simple): 100 XP = +1 niveau
+  const levelNumber = 1 + Math.floor(xp / 100);
+  const levelLabel = levelNumber === 1 ? "Débutant" : `Niveau ${levelNumber}`;
+
+  // Badges (mock pour l'instant — on branchera la DB plus tard)
   const badges = [
     { name: "Premier pas", color: "bg-success" },
     { name: "Alphabet maîtrisé", color: "bg-primary" },
@@ -46,19 +60,15 @@ export function ProfileSection() {
 
   const stats = [
     { label: "Cours terminés", value: coursesCompleted, icon: Award },
-    { label: "Jeux joués", value: user.gamesPlayed, icon: User },
-    { label: "Points totaux", value: totalPoints, icon: Mail },
+    { label: "Niveau", value: levelNumber, icon: User },
+    { label: "Points totaux", value: xp, icon: Mail },
   ];
 
   return (
     <div className="p-4 pb-20">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground mb-2">
-          Mon Profil
-        </h1>
-        <p className="text-muted-foreground">
-          Gérer mes informations et mes préférences
-        </p>
+        <h1 className="text-2xl font-bold text-foreground mb-2">Mon Profil</h1>
+        <p className="text-muted-foreground">Gérer mes informations et mes préférences</p>
       </div>
 
       {isLoading && (
@@ -70,7 +80,7 @@ export function ProfileSection() {
       {isError && (
         <Card className="p-4 mb-4">
           <p className="text-sm text-destructive">
-            Impossible de charger la progression depuis l’API. (Fallback local)
+            Impossible de charger la progression depuis l’API.
           </p>
         </Card>
       )}
@@ -79,23 +89,27 @@ export function ProfileSection() {
       <Card className="p-6 mb-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
           <Avatar className="w-16 h-16">
+            {user?.picture ? <AvatarImage src={user.picture} alt="Avatar" /> : null}
             <AvatarFallback className="bg-primary text-primary-foreground text-lg font-semibold">
-              MD
+              {initials}
             </AvatarFallback>
           </Avatar>
-          
+
           <div className="flex-1">
-            <h2 className="text-xl font-semibold">{user.name}</h2>
-            <p className="text-muted-foreground text-sm">{user.email}</p>
+            <h2 className="text-xl font-semibold">{fullName}</h2>
+            <p className="text-muted-foreground text-sm">{email}</p>
+
             <div className="flex flex-wrap items-center gap-2 mt-2">
-              <Badge variant="outline" className="text-xs sm:text-sm">{user.level}</Badge>
+              <Badge variant="outline" className="text-xs sm:text-sm">
+                {levelLabel}
+              </Badge>
               <Badge className="bg-primary text-primary-foreground text-xs sm:text-sm">
-                {totalPoints} pts
+                {xp} pts
               </Badge>
             </div>
           </div>
-          
-          <Button variant="outline" size="sm" onClick={() => setView('edit')}>
+
+          <Button variant="outline" size="sm" onClick={() => setView("edit")}>
             <Edit size={16} className="sm:mr-2" />
             <span className="hidden sm:inline">Modifier</span>
           </Button>
@@ -104,11 +118,11 @@ export function ProfileSection() {
         <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-muted-foreground">
           <div className="flex items-center gap-1">
             <Calendar size={14} />
-            <span className="hidden sm:inline">Inscrit en </span>{user.joinDate}
+            <span>Inscrit(e)</span>
           </div>
           <div className="flex items-center gap-1">
             <Award size={14} />
-            {user.badges} badges
+            {badges.length} badges
           </div>
         </div>
       </Card>
@@ -125,7 +139,9 @@ export function ProfileSection() {
                 </div>
               </div>
               <p className="font-semibold text-sm sm:text-base">{stat.value}</p>
-              <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">{stat.label}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">
+                {stat.label}
+              </p>
             </Card>
           );
         })}
@@ -137,11 +153,13 @@ export function ProfileSection() {
           <Award size={20} />
           Mes badges
         </h3>
-        
+
         <div className="grid grid-cols-2 gap-3">
           {badges.map((badge, index) => (
             <div key={index} className="flex items-center gap-3 p-3 rounded-xl bg-muted/30">
-              <div className={`w-10 h-10 rounded-full ${badge.color} flex items-center justify-center`}>
+              <div
+                className={`w-10 h-10 rounded-full ${badge.color} flex items-center justify-center`}
+              >
                 <Award size={16} className="text-white" />
               </div>
               <div>
@@ -154,19 +172,19 @@ export function ProfileSection() {
 
       {/* Quick Actions */}
       <div className="space-y-3">
-        <Button 
-          variant="outline" 
-          className="w-full justify-start" 
+        <Button
+          variant="outline"
+          className="w-full justify-start"
           size="lg"
-          onClick={() => setView('settings')}
+          onClick={() => setView("settings")}
         >
           <Settings className="mr-3" size={20} />
           Paramètres de l'app
         </Button>
-        
-        <Button 
-          variant="outline" 
-          className="w-full justify-start" 
+
+        <Button
+          variant="outline"
+          className="w-full justify-start"
           size="lg"
           onClick={() => {
             toast({
@@ -178,10 +196,10 @@ export function ProfileSection() {
           <Share2 className="mr-3" size={20} />
           Partager l'application
         </Button>
-        
-        <Button 
-          variant="outline" 
-          className="w-full justify-start" 
+
+        <Button
+          variant="outline"
+          className="w-full justify-start"
           size="lg"
           onClick={() => {
             toast({
