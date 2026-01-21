@@ -1,242 +1,90 @@
-import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressRing } from "@/components/ui/progress-ring";
 import { Calendar, Trophy, Flame, TrendingUp } from "lucide-react";
-
-type WeekAttempt = {
-  createdAt: string;
-  lessonId: string;
-  isCorrect: boolean;
-  xpAwarded: number;
-};
-
-type WeekResponse = {
-  attempts: WeekAttempt[];
-  xp: number;
-  completedLessons: string[];
-};
+import { useMemo } from "react";
+import { useHistoryWeek } from "@/hooks/useHistoryWeek";
 
 type Achievement = {
   id: string;
   title: string;
   description: string;
-  earned: boolean;
   progressPct: number; // 0..100
   progressLabel: string; // ex: "3/7"
+  earned: boolean;
   meta?: string;
 };
 
-const WEEK_LABELS = ["L", "M", "M", "J", "V", "S", "D"] as const;
+function buildAchievementsFromHistory(args: {
+  streakDays: number;
+  globalProgressPct: number;
+  activeDaysCount: number;
+}) {
+  const { streakDays, globalProgressPct, activeDaysCount } = args;
 
-// ⚠️ adapte si tu as un autre id pour la leçon alphabet
-const ALPHABET_LESSON_ID = "alphabet";
+  // ✅ Tout est calculé côté frontend à partir des données réelles API
+  const firstStepEarned = activeDaysCount >= 1;
+  const firstStepPct = firstStepEarned ? 100 : 0;
 
-// Si tu as 12 leçons, garde 12. Sinon, mets le vrai total.
-const TOTAL_LESSONS = 12;
+  const regularityTarget = 7;
+  const regularityEarned = streakDays >= regularityTarget;
+  const regularityCount = Math.min(regularityTarget, streakDays);
+  const regularityPct = Math.round((regularityCount / regularityTarget) * 100);
 
-// ---------- helpers ----------
-function dayKey(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x.toISOString().slice(0, 10);
+  // Exemple "progression globale" => badge si 100%
+  const completionEarned = globalProgressPct >= 100;
+
+  const achievements: Achievement[] = [
+    {
+      id: "first_step",
+      title: "Premier pas",
+      description: "Faire une activité (cours/jeu) au moins une fois",
+      earned: firstStepEarned,
+      progressPct: firstStepPct,
+      progressLabel: firstStepEarned ? "1/1" : "0/1",
+      meta: firstStepEarned ? "Débloqué" : "À débloquer",
+    },
+    {
+      id: "regularity",
+      title: "Régularité",
+      description: "7 jours consécutifs d’activité",
+      earned: regularityEarned,
+      progressPct: regularityPct,
+      progressLabel: `${regularityCount}/7`,
+      meta: regularityEarned ? "Débloqué" : "Continue ta série 🔥",
+    },
+    {
+      id: "completion",
+      title: "Persévérant",
+      description: "Atteindre 100% de progression globale",
+      earned: completionEarned,
+      progressPct: Math.min(100, Math.max(0, globalProgressPct)),
+      progressLabel: `${Math.min(100, Math.max(0, globalProgressPct))}%`,
+      meta: completionEarned ? "Débloqué" : "Avance dans les leçons",
+    },
+  ];
+
+  return achievements;
 }
-// ✅ Résume: retourne YYYY-MM-DD à minuit pour comparer des jours.
-
-function getWeekDatesMondayToSunday() {
-  const now = new Date();
-  const day = now.getDay(); // 0=dimanche
-  const diffToMonday = day === 0 ? 6 : day - 1;
-
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - diffToMonday);
-  monday.setHours(0, 0, 0, 0);
-
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  });
-}
-// ✅ Résume: renvoie la semaine courante (Lundi → Dimanche).
-
-function parseISODateKey(key: string) {
-  const [y, m, d] = key.split("-").map(Number);
-  const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
-  dt.setHours(0, 0, 0, 0);
-  return dt;
-}
-// ✅ Résume: convertit "YYYY-MM-DD" en Date à minuit.
-
-function relativeDayLabel(fromKey: string, toKey: string) {
-  const from = parseISODateKey(fromKey);
-  const to = parseISODateKey(toKey);
-  const diffDays = Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return "Aujourd’hui";
-  if (diffDays === 1) return "Hier";
-  if (diffDays < 7) return `Il y a ${diffDays} jours`;
-  if (diffDays < 14) return "Il y a 1 semaine";
-  return `Il y a ${Math.floor(diffDays / 7)} semaines`;
-}
-// ✅ Résume: label “Aujourd’hui / Hier / Il y a X jours …”.
+// ✅ Résumé: génère des badges/achievements sans mock, seulement depuis les données API.
 
 export function HistorySection() {
-  const [data, setData] = useState<WeekResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isError, setIsError] = useState(false);
+  const { data, isLoading, isError } = useHistoryWeek();
 
-  // semaine courante
-  const weekDates = useMemo(() => getWeekDatesMondayToSunday(), []);
-  const fromKey = useMemo(() => dayKey(weekDates[0]!), [weekDates]);
-  const toKey = useMemo(() => dayKey(weekDates[6]!), [weekDates]);
+  const days = data?.days ?? [];
+  const activeDaysCount = data?.activeDaysCount ?? 0;
+  const streakDays = data?.streakDays ?? 0;
+  const globalProgressPct = data?.globalProgressPct ?? 0;
 
-  useEffect(() => {
-    let alive = true;
-
-    async function load() {
-      try {
-        setIsLoading(true);
-        setIsError(false);
-
-        const res = await fetch(`/api/history/week?from=${fromKey}&to=${toKey}`, {
-          credentials: "include",
-        });
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = (await res.json()) as WeekResponse;
-
-        if (!alive) return;
-        setData(json);
-      } catch (e) {
-        if (!alive) return;
-        setIsError(true);
-        setData(null);
-      } finally {
-        if (!alive) return;
-        setIsLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      alive = false;
-    };
-  }, [fromKey, toKey]);
-
-  const attempts = data?.attempts ?? [];
-  const xp = data?.xp ?? 0;
-  const completedLessons = data?.completedLessons ?? [];
-
-  // jours actifs de la semaine (au moins 1 attempt ce jour)
-  const activeDaySet = useMemo(() => {
-    const s = new Set<string>();
-    for (const a of attempts) s.add(dayKey(new Date(a.createdAt)));
-    return s;
-  }, [attempts]);
-  // ✅ Résume: calcule les jours avec activité.
-
-  const weeklyUi = useMemo(() => {
-    return weekDates.map((d, idx) => {
-      const k = dayKey(d);
-      return {
-        label: WEEK_LABELS[idx]!,
-        dateKey: k,
-        active: activeDaySet.has(k),
-        isToday: k === dayKey(new Date()),
-      };
-    });
-  }, [weekDates, activeDaySet]);
-  // ✅ Résume: construit les 7 jours + état actif/aujourd’hui.
-
-  const weeklyActiveCount = useMemo(() => weeklyUi.filter((x) => x.active).length, [weeklyUi]);
-
-  // streak réel (jours consécutifs jusqu’à aujourd’hui)
-  const currentStreak = useMemo(() => {
-    let count = 0;
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-
-    while (true) {
-      const k = dayKey(d);
-      if (!activeDaySet.has(k)) break;
-      count++;
-      d.setDate(d.getDate() - 1);
-    }
-    return count;
-  }, [activeDaySet]);
-  // ✅ Résume: calcule la série de jours consécutifs.
-
-  // progression globale réelle (completedLessons / total)
-  const globalPct = useMemo(() => {
-    if (TOTAL_LESSONS <= 0) return 0;
-    return Math.min(100, Math.round((completedLessons.length / TOTAL_LESSONS) * 100));
-  }, [completedLessons.length]);
-
-  // dernier jour actif dans la semaine (pour info)
-  const lastActiveMeta = useMemo(() => {
-    const today = dayKey(new Date());
-    const keys = weeklyUi.filter((d) => d.active).map((d) => d.dateKey).sort();
-    if (keys.length === 0) return "Aucune activité cette semaine";
-    const last = keys.at(-1)!;
-    return `Dernière activité: ${relativeDayLabel(last, today)}`;
-  }, [weeklyUi]);
-
-  // Achievements (réels, basés sur DB)
-  const achievements: Achievement[] = useMemo(() => {
-    const firstStepEarned = completedLessons.length >= 1;
-
-    const alphabetEarned = completedLessons.includes(ALPHABET_LESSON_ID);
-    // ✅ Résume: badge Alphabet dépend d’un vrai lessonId.
-
-    const regularityEarned = currentStreak >= 7;
-    const regCount = Math.min(7, currentStreak);
-
-    // Expert: basé sur XP (réel)
-    const EXPERT_XP_TARGET = 1000;
-    const expertEarned = xp >= EXPERT_XP_TARGET;
-    const expertPct = Math.min(100, Math.round((xp / EXPERT_XP_TARGET) * 100));
-
-    return [
-      {
-        id: "first_step",
-        title: "Premier pas",
-        description: "Terminer ta première leçon",
-        earned: firstStepEarned,
-        progressPct: Math.min(100, Math.round((Math.min(1, completedLessons.length) / 1) * 100)),
-        progressLabel: `${Math.min(1, completedLessons.length)}/1`,
-        meta: firstStepEarned ? "Débloqué" : "À débloquer",
-      },
-      {
-        id: "alphabet",
-        title: "Alphabet maîtrisé",
-        description: "Terminer la leçon Alphabet",
-        earned: alphabetEarned,
-        progressPct: alphabetEarned ? 100 : 0,
-        progressLabel: alphabetEarned ? "1/1" : "0/1",
-        meta: alphabetEarned ? "Débloqué" : `À débloquer (lessonId = "${ALPHABET_LESSON_ID}")`,
-      },
-      {
-        id: "regularity",
-        title: "Régularité",
-        description: "7 jours consécutifs d’activité",
-        earned: regularityEarned,
-        progressPct: Math.round((regCount / 7) * 100),
-        progressLabel: `${regCount}/7`,
-        meta: lastActiveMeta,
-      },
-      {
-        id: "expert",
-        title: "Expert LSF",
-        description: "Atteindre 1000 points",
-        earned: expertEarned,
-        progressPct: expertPct,
-        progressLabel: `${xp}/1000`,
-        meta: `XP: ${xp}`,
-      },
-    ];
-  }, [completedLessons, currentStreak, xp, lastActiveMeta]);
+  const achievements = useMemo(
+    () =>
+      buildAchievementsFromHistory({
+        streakDays,
+        globalProgressPct,
+        activeDaysCount,
+      }),
+    [streakDays, globalProgressPct, activeDaysCount]
+  );
 
   return (
     <div className="p-4 pb-20">
@@ -257,7 +105,7 @@ export function HistorySection() {
         </Card>
       )}
 
-      {/* Weekly Overview — ✅ joli en desktop (compact + centré) */}
+      {/* Weekly Overview */}
       <Card className="p-4 mb-6">
         <div className="mx-auto w-full max-w-md sm:max-w-lg">
           <div className="flex items-center justify-between mb-4">
@@ -265,39 +113,42 @@ export function HistorySection() {
               <Calendar size={20} />
               Cette semaine
             </h2>
-            <Badge className="bg-success text-success-foreground">{weeklyActiveCount}/7 jours</Badge>
+            <Badge className="bg-success text-success-foreground">{activeDaysCount}/7 jours</Badge>
           </div>
 
-          <div className="grid grid-cols-7 gap-2">
-            {weeklyUi.map((d) => (
-              <div key={d.dateKey} className="text-center">
+          <div className="grid grid-cols-7 gap-2 sm:gap-4">
+            {days.map((d) => (
+              <div key={d.date} className="text-center">
                 <div
                   className={[
-                    "w-9 h-9 rounded-full flex items-center justify-center text-xs font-medium mb-1 mx-auto",
-                    d.active ? "bg-warning text-warning-foreground" : "bg-muted text-muted-foreground",
+                    "mx-auto rounded-full flex items-center justify-center text-xs font-medium mb-1",
+                    "w-9 h-9 sm:w-11 sm:h-11",
+                    d.didActivity ? "bg-warning text-warning-foreground" : "bg-muted text-muted-foreground",
                     d.isToday ? "ring-2 ring-primary/40" : "",
                   ].join(" ")}
-                  title={d.dateKey}
+                  title={d.date}
                 >
-                  {d.active ? <Flame size={14} /> : ""}
+                  {d.didActivity ? <Flame size={14} /> : ""}
                 </div>
                 <span className="text-xs text-muted-foreground">{d.label}</span>
               </div>
             ))}
           </div>
 
-          <p className="text-xs text-muted-foreground mt-3">{lastActiveMeta}</p>
+          {activeDaysCount === 0 && (
+            <p className="text-xs text-muted-foreground mt-3">Aucune activité cette semaine</p>
+          )}
         </div>
       </Card>
 
-      {/* Overall Stats — ✅ réels */}
+      {/* Overall Stats */}
       <div className="grid grid-cols-2 gap-4 mb-6">
         <Card className="p-4 text-center">
-          <ProgressRing progress={globalPct} size={60} strokeWidth={4} className="mx-auto mb-3">
+          <ProgressRing progress={globalProgressPct} size={60} strokeWidth={4} className="mx-auto mb-3">
             <TrendingUp size={20} className="text-primary" />
           </ProgressRing>
           <p className="font-semibold">Progression globale</p>
-          <p className="text-sm text-muted-foreground">{globalPct}% complété</p>
+          <p className="text-sm text-muted-foreground">{globalProgressPct}% complété</p>
         </Card>
 
         <Card className="p-4 text-center">
@@ -307,11 +158,11 @@ export function HistorySection() {
             </div>
           </div>
           <p className="font-semibold">Série actuelle</p>
-          <p className="text-sm text-muted-foreground">{currentStreak} jour(s)</p>
+          <p className="text-sm text-muted-foreground">{streakDays} jour(s)</p>
         </Card>
       </div>
 
-      {/* Achievements — ✅ réels */}
+      {/* Achievements */}
       <Card className="p-4 mb-6">
         <h2 className="font-semibold flex items-center gap-2 mb-4">
           <Trophy size={20} />

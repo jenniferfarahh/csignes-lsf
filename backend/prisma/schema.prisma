@@ -47,6 +47,7 @@ model UserProgress {
   updatedAt      DateTime @updatedAt
 
   attempts LessonAttempt[]
+  gameAttempts GameAttempt[]
 }
 
 model LessonAttempt {
@@ -80,3 +81,15 @@ model Sign {
   @@unique([word, category])
 }
 
+model GameAttempt {
+  id        String   @id @default(cuid())
+  userId    String
+  gameId    String
+  score     Int
+  xpAwarded Int
+  createdAt DateTime @default(now())
+
+  user UserProgress @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, gameId])
+}

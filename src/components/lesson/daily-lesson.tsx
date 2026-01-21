@@ -329,35 +329,6 @@ export function DailyLesson({ onBack }: DailyLessonProps) {
         </Card>
         )}
         
-        {/* Previous Lessons */}
-        <div>
-          <h3 className="font-semibold mb-4">Leçons précédentes</h3>
-          <div className="space-y-3">
-            {previousLessons.map((prevLesson, index) => (
-              <Card 
-                key={index} 
-                className="p-4 cursor-pointer hover:shadow-lg transition-all"
-                onClick={() => setSelectedLesson(index)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center">
-                      <CheckCircle size={20} className="text-success" />
-                    </div>
-                    <div>
-                      <p className="font-medium">{prevLesson.title}</p>
-                      <p className="text-sm text-muted-foreground">Terminée</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Star size={16} className="text-warning" />
-                    <span className="font-semibold">{prevLesson.score}%</span>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
       </div>
     );
   }

@@ -79,6 +79,28 @@ app.get("/api/courses", (_req, res) => {
   res.json([course]);
 });
 
+// GET all signs (for games)
+app.get("/api/signs", requireAuth, async (_req, res) => {
+  try {
+    const signs = await prisma.sign.findMany({
+      orderBy: { word: "asc" },
+      select: {
+        id: true,
+        word: true,
+        description: true,
+        videoUrl: true,
+        category: true,
+        difficulty: true,
+      },
+    });
+
+    res.json(signs);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to load signs" });
+  }
+});
+
 app.get("/api/courses/:courseId", (_req, res) => {
   res.json(course);
 });
@@ -217,9 +239,10 @@ app.get("/api/progress/me/lesson/:lessonId/attempt", requireAuth, async (req: Au
 });
 
 // backend/src/index.ts
-app.get("/api/history/week", requireAuth, async (req, res) => {
+app.get("/api/history/week", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = req.user.sub; // adapte si ton middleware expose l'id autrement
+      const userId = req.userId!;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const from = String(req.query.from ?? "").trim(); // "YYYY-MM-DD"
     const to = String(req.query.to ?? "").trim();     // "YYYY-MM-DD"
@@ -307,6 +330,114 @@ app.post("/api/attempts", requireAuth, async (req: AuthRequest, res) => {
   } catch {
     res.status(409).json({ error: "Already attempted" });
   }
+});
+
+app.post("/api/games/complete", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+  const { gameId, score } = req.body as {
+    gameId: string;
+    score: number;
+  };
+
+  if (!gameId || typeof score !== "number") {
+    return res.status(400).json({ error: "gameId & score required" });
+  }
+
+  // règle simple XP
+  const xpAwarded =
+    score >= 80 ? 20 :
+    score >= 50 ? 10 :
+    5;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.gameAttempt.create({
+      data: { userId, gameId, score, xpAwarded },
+    });
+
+    await tx.userProgress.update({
+      where: { userId },
+      data: { xp: { increment: xpAwarded } },
+    });
+  });
+
+  res.json({ xpAwarded });
+});
+
+// ------------------ GAMES API ------------------
+
+// GET stats (utilisé par GamesSection)
+app.get("/api/games/stats", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+  const attempts = await prisma.gameAttempt.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    select: { gameId: true, score: true, xpAwarded: true, createdAt: true },
+  });
+
+  const gamesCompleted = new Set(attempts.map(a => a.gameId)).size;
+
+  const avgScore =
+    attempts.length === 0 ? 0 : Math.round(attempts.reduce((s, a) => s + a.score, 0) / attempts.length);
+
+  // badges simple (à toi de changer plus tard)
+  const badgesWon =
+    (gamesCompleted >= 1 ? 1 : 0) + (gamesCompleted >= 3 ? 1 : 0) + (avgScore >= 80 ? 1 : 0);
+
+  // “défi du jour” : count games done today (sur date locale simple)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayCount = attempts.filter(a => new Date(a.createdAt).getTime() >= today.getTime()).length;
+
+  res.json({
+    gamesCompleted,
+    avgScore,
+    badgesWon,
+    dailyProgress: Math.min(todayCount, 5),
+    dailyTarget: 5,
+    completedGameIds: Array.from(new Set(attempts.map(a => a.gameId))),
+  });
+});
+
+// POST attempt (sauvegarde score + ajoute XP) + bloque replay
+app.post("/api/games/attempts", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+  const { gameId, score } = req.body as { gameId?: string; score?: number };
+
+  if (!gameId || typeof score !== "number") {
+    return res.status(400).json({ error: "gameId and score are required" });
+  }
+
+  // ✅ bloque replay (1 seule fois par jeu)
+  const already = await prisma.gameAttempt.findFirst({
+    where: { userId, gameId },
+    select: { id: true },
+  });
+  if (already) return res.status(409).json({ error: "Already played" });
+
+  // XP simple: score 0..100 -> 0..20 XP
+  const xpAwarded = Math.max(0, Math.min(20, Math.round(score / 5)));
+
+  const result = await prisma.$transaction(async (tx) => {
+    const attempt = await tx.gameAttempt.create({
+      data: { userId, gameId, score, xpAwarded },
+    });
+
+    const progress = await tx.userProgress.upsert({
+      where: { userId },
+      update: { xp: { increment: xpAwarded } },
+      create: { userId, xp: xpAwarded, completedLessons: [] },
+    });
+
+    return { attempt, progress };
+  });
+
+  res.json({
+    ok: true,
+    gameId,
+    score,
+    xpAwarded,
+    totalXp: result.progress.xp,
+  });
 });
 
 
