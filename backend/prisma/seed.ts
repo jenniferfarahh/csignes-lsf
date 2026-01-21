@@ -25,19 +25,36 @@ async function main() {
     },
   });
 
-  // (optionnel) crée un progress demo
-  await prisma.userProgress.upsert({
-    where: { userId: "demo" },
-    update: {},
-    create: {
-      userId: "demo",
-      xp: 0,
-      completedLessons: [],
-    },
-  });
-
   console.log("✅ Seed done");
 }
+
+  await prisma.sign.createMany({
+  data: [
+    {
+      word: "Bonjour",
+      description: "Salutation utilisée en journée.",
+      videoUrl: "/videos/bonjour.mp4",
+      category: "Salutations",
+      difficulty: "facile",
+    },
+    {
+      word: "Merci",
+      description: "Exprime la gratitude.",
+      videoUrl: "/videos/merci.mp4",
+      category: "Politesse",
+      difficulty: "facile",
+    },
+    {
+      word: "Au revoir",
+      description: "Pour se quitter.",
+      videoUrl: "/videos/aurevoir.mp4",
+      category: "Salutations",
+      difficulty: "facile",
+    },
+  ],
+  skipDuplicates: true,
+});
+
 
 main()
   .catch((e) => {

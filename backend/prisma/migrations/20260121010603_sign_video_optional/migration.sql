@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Sign" ALTER COLUMN "description" DROP NOT NULL,
+ALTER COLUMN "videoUrl" DROP NOT NULL;

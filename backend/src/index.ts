@@ -106,44 +106,103 @@ app.get("/api/lessons/:lessonId", async (req, res) => {
 });
 
 
-app.get("/api/dictionary", (_req, res) => {
-  res.json(dictionary);
+app.get("/api/dictionary", requireAuth, async (req, res) => {
+  const q = String(req.query.q ?? "").trim();
+
+  const signs = await prisma.sign.findMany({
+    where: q
+      ? {
+          OR: [
+            { word: { contains: q, mode: "insensitive" } },
+            { description: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : undefined,
+    orderBy: { word: "asc" },
+  });
+
+  res.json(signs);
 });
 
+
 app.post("/api/auth/google", async (req, res) => {
-  const { idToken } = req.body as { idToken?: string };
-  if (!idToken) return res.status(400).json({ error: "idToken missing" });
+  try {
+    const { idToken } = req.body as { idToken?: string };
+    if (!idToken) return res.status(400).json({ error: "idToken missing" });
 
-  const ticket = await googleClient.verifyIdToken({
-    idToken,
-    audience: process.env.GOOGLE_CLIENT_ID,
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload?.sub || !payload.email) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
+    const userId = payload.sub;
+
+    const fullName = (payload.name ?? "").trim();
+    const parts = fullName.split(/\s+/).filter(Boolean);
+    const firstName = payload.given_name ?? parts[0] ?? null;
+    const lastName =
+      payload.family_name ?? (parts.length > 1 ? parts.slice(1).join(" ") : null);
+
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: {
+        email: payload.email,
+        firstName,
+        lastName,
+        picture: payload.picture ?? null,
+      },
+      create: {
+        id: userId,
+        email: payload.email,
+        firstName,
+        lastName,
+        picture: payload.picture ?? null,
+      },
+    });
+
+    await prisma.userProgress.upsert({
+      where: { userId },
+      update: {},
+      create: { userId, xp: 0, completedLessons: [] },
+    });
+
+    return res.json({ accessToken: idToken });
+  } catch (err) {
+    console.error("Google auth error:", err);
+    return res.status(500).json({ error: "Auth failed" });
+  }
+});
+
+app.get("/api/me", requireAuth, async (req: any, res) => {
+  const userId = req.userId;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, firstName: true, lastName: true, picture: true },
   });
 
-  const payload = ticket.getPayload();
-  if (!payload?.sub) return res.status(401).json({ error: "Invalid token" });
-
-  const userId = payload.sub;
-
-  await prisma.userProgress.upsert({
-    where: { userId },
-    update: {},
-    create: { userId, xp: 0, completedLessons: [] },
-  });
-
-  // Simple: on renvoie le même idToken pour l’utiliser comme accessToken
-  return res.json({ accessToken: idToken });
+  if (!user) return res.status(404).json({ error: "User not found" });
+  return res.json(user);
 });
 
 app.get("/api/progress/me", requireAuth, async (req: AuthRequest, res) => {
   const userId = req.userId!;
-  const p = await prisma.userProgress.upsert({
+
+  const progress = await prisma.userProgress.findUnique({
     where: { userId },
-    update: {},
-    create: { userId, xp: 0, completedLessons: [] },
   });
 
-  res.json(p);
+  if (!progress) {
+    return res.status(404).json({ error: "Progress not found" });
+  }
+
+  res.json(progress);
 });
+
 
 app.get("/api/progress/me/lesson/:lessonId/attempt", requireAuth, async (req: AuthRequest, res) => {
     const userId = req.userId!;

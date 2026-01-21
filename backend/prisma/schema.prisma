@@ -6,6 +6,19 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id        String @id            // google "sub"
+  email     String @unique
+  firstName String?
+  lastName  String?
+  picture   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  progress  UserProgress?
+}
+
 model Lesson {
   id           String   @id
   title        String
@@ -22,6 +35,8 @@ model Lesson {
 
 model UserProgress {
   userId           String   @id
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   xp               Int      @default(0)
   completedLessons String[] @default([])
 
@@ -50,3 +65,18 @@ model LessonAttempt {
 
   @@unique([userId, lessonId]) // 1 seule tentative par user pour cette leçon
 }
+
+model Sign {
+  id          String   @id @default(cuid())
+  word        String
+  description String?
+  videoUrl    String
+  category    String
+  difficulty  String
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@unique([word, category])
+}
+
