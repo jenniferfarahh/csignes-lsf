@@ -1,108 +1,128 @@
 import { useMemo, useState } from "react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { completeGame } from "@/hooks/useCompleteGame";
-import { GameResult } from "./GameResult";
 
-type Props = {
-  onBack: () => void;
-  onCompleted: () => void;
+type Props = { onBack: () => void };
+
+type Q = {
+  q: string;
+  choices: string[];
+  correct: number;
 };
 
-type Q = { q: string; choices: string[]; correct: number };
-
-const QUESTIONS: Q[] = [
-  {
-    q: "La LSF signifie :",
-    choices: ["Langue des Signes Française", "Langue Sociale Francophone", "Langage Sonore Français"],
-    correct: 0,
-  },
-  {
-    q: "Une langue des signes est :",
-    choices: ["Un code universel identique partout", "Une langue à part entière", "Juste des gestes improvisés"],
-    correct: 1,
-  },
-  {
-    q: "En LSF, l’expression du visage sert surtout à :",
-    choices: ["Décorer", "Exprimer la grammaire et le sens", "Remplacer les mains"],
-    correct: 1,
-  },
-  {
-    q: "La LSF se lit :",
-    choices: ["Uniquement main droite", "Uniquement main gauche", "Avec les mains + le regard + le visage"],
-    correct: 2,
-  },
-];
-
-export function TheoryQuizGame({ onBack, onCompleted }: Props) {
-  const quiz = useMemo(() => QUESTIONS, []);
+export function TheoryQuizGame({ onBack }: Props) {
+  const [step, setStep] = useState<"play" | "result">("play");
   const [idx, setIdx] = useState(0);
-  const [answers, setAnswers] = useState<number[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [correctCount, setCorrectCount] = useState(0);
+  const [xpAwarded, setXpAwarded] = useState<number | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  const current = quiz[idx]!;
+  const questions: Q[] = useMemo(
+    () => [
+      {
+        q: "La LSF signifie…",
+        choices: ["Langue des Signes Française", "Langage Simple Français", "Lecture Sans Fautes"],
+        correct: 0,
+      },
+      {
+        q: "La LSF est…",
+        choices: ["Une langue à part entière", "Un code universel identique partout", "Une version mimée du français"],
+        correct: 0,
+      },
+      {
+        q: "En LSF, les expressions du visage servent surtout à…",
+        choices: ["Décorer", "Porter du sens (grammaire/émotion)", "Remplacer les mains"],
+        correct: 1,
+      },
+      {
+        q: "Vrai ou faux: chaque pays a la même langue des signes.",
+        choices: ["Vrai", "Faux"],
+        correct: 1,
+      },
+      {
+        q: "Dans une langue des signes, l’espace devant toi peut servir à…",
+        choices: ["Rien", "Placer des personnes/objets dans le discours", "Uniquement compter"],
+        correct: 1,
+      },
+    ],
+    []
+  );
 
-  const done = idx >= quiz.length;
-
-  const correctCount = useMemo(() => {
-    return answers.filter((a, i) => a === quiz[i]?.correct).length;
-  }, [answers, quiz]);
-
-  const score = done ? Math.round((correctCount / quiz.length) * 100) : 0;
-
-  async function finish() {
-    setSaving(true);
-    setError(null);
+  async function finish(finalScore: number) {
     try {
-      await completeGame("quiz_lsf", score);
-      onCompleted();
+      setApiError(null);
+      const res = await completeGame("quiz_lsf", finalScore);
+      setXpAwarded(res.xpAwarded);
     } catch (e: any) {
-      setError(e?.message ?? "Erreur");
+      setApiError(e?.message ?? "Erreur");
     } finally {
-      setSaving(false);
+      setStep("result");
     }
   }
 
-  if (done) {
-    // on calcule xp via backend, mais on affiche juste score ici.
-    // Pour afficher xp exact, on pourrait stocker la réponse completeGame.
-    // Ici simple: on refait l’appel et on récupère xpAwarded.
-    // ✅ On le fait :
-    return <TheoryQuizFinish score={score} onBack={onBack} onCompleted={onCompleted} />;
+  if (step === "result") {
+    const score = Math.round((correctCount / questions.length) * 100);
+    return (
+      <div className="p-4 pb-20">
+        <Button variant="ghost" onClick={onBack}>← Retour</Button>
+
+        <Card className="p-5 mt-4">
+          <h2 className="text-xl font-bold mb-2">Résultat — Quiz express</h2>
+          <p className="text-muted-foreground mb-2">
+            Bonnes réponses: <span className="font-semibold">{correctCount}/{questions.length}</span>
+          </p>
+          <p className="text-muted-foreground mb-4">
+            Score: <span className="font-semibold">{score}%</span>
+          </p>
+
+          {typeof xpAwarded === "number" ? (
+            <Badge className="bg-success text-success-foreground">+{xpAwarded} XP</Badge>
+          ) : (
+            <Badge variant="outline">XP non enregistré</Badge>
+          )}
+
+          {apiError && <p className="text-sm text-destructive mt-3">{apiError}</p>}
+
+          <Button className="w-full mt-4" onClick={onBack}>Retour aux mini-jeux</Button>
+        </Card>
+      </div>
+    );
   }
+
+  const q = questions[idx];
 
   return (
     <div className="p-4 pb-20">
-      <Button variant="ghost" onClick={onBack} className="mb-4">
-        ← Quitter
-      </Button>
+      <Button variant="ghost" onClick={onBack}>← Quitter</Button>
 
-      <div className="mb-4">
-        <h1 className="text-xl font-bold">Quiz express (LSF)</h1>
-        <p className="text-muted-foreground text-sm">Réponds vite : 4 questions</p>
+      <div className="mt-2 mb-4">
+        <h1 className="text-2xl font-bold">Quiz express</h1>
+        <p className="text-muted-foreground">Question {idx + 1}/{questions.length}</p>
       </div>
 
-      <Card className="p-4 mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <Badge variant="outline">
-            Question {idx + 1}/{quiz.length}
-          </Badge>
-          <Badge className="bg-primary text-primary-foreground">Théorie</Badge>
-        </div>
+      <Card className="p-4">
+        <p className="font-semibold">{q.q}</p>
 
-        <h2 className="font-semibold">{current.q}</h2>
-
-        <div className="space-y-3 mt-4">
-          {current.choices.map((c, ci) => (
+        <div className="grid grid-cols-1 gap-2 mt-3">
+          {q.choices.map((c, i) => (
             <Button
-              key={ci}
+              key={c}
               variant="outline"
-              className="w-full justify-start rounded-xl"
-              onClick={() => {
-                setAnswers((prev) => [...prev, ci]);
-                setIdx((x) => x + 1);
+              onClick={async () => {
+                const ok = i === q.correct;
+                const next = idx + 1;
+
+                if (ok) setCorrectCount((x) => x + 1);
+
+                if (next >= questions.length) {
+                  const finalCorrect = (ok ? correctCount + 1 : correctCount);
+                  const finalScore = Math.round((finalCorrect / questions.length) * 100);
+                  await finish(finalScore);
+                } else {
+                  setIdx(next);
+                }
               }}
             >
               {c}
@@ -110,66 +130,6 @@ export function TheoryQuizGame({ onBack, onCompleted }: Props) {
           ))}
         </div>
       </Card>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {saving && <p className="text-sm text-muted-foreground">Sauvegarde...</p>}
     </div>
   );
-}
-
-function TheoryQuizFinish({
-  score,
-  onBack,
-  onCompleted,
-}: {
-  score: number;
-  onBack: () => void;
-  onCompleted: () => void;
-}) {
-  const [xp, setXp] = useState<number>(0);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  // On rejoue pas: on appelle completeGame ici seulement si pas encore fait.
-  // Mais ce composant est appelé après avoir répondu, donc on fait l’appel maintenant.
-  // Pour éviter double save, on ne l’a pas fait plus haut.
-  // ✅ Donc ici seulement.
-  useMemo(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        const res = await completeGame("quiz_lsf", score);
-        setXp(res.xpAwarded);
-        onCompleted();
-      } catch (e: any) {
-        setErr(e?.message ?? "Erreur");
-      } finally {
-        setLoading(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="p-4 pb-20">
-        <p className="text-sm text-muted-foreground">Calcul du résultat...</p>
-      </div>
-    );
-  }
-
-  if (err) {
-    return (
-      <div className="p-4 pb-20">
-        <Button variant="ghost" onClick={onBack} className="mb-4">
-          ← Retour
-        </Button>
-        <Card className="p-4">
-          <p className="text-sm text-destructive">{err}</p>
-        </Card>
-      </div>
-    );
-  }
-
-  return <GameResult title="Quiz express" score={score} xpAwarded={xp} onBack={onBack} />;
 }

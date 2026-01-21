@@ -9,36 +9,41 @@ import { ProfileSection } from "@/components/profile/profile-section";
 import { DictionarySection } from "@/components/dictionary/dictionary-section";
 import { ChallengesSection } from "@/components/challenges/challenges-section";
 import { DailyLesson } from "@/components/lesson/daily-lesson";
-import { useProgress } from "@/hooks/useProgress";
+
+// ✅ tes 3 jeux
 import { GuessSignGame } from "@/components/games/play/GuessSignGame";
 import { MimeGuessGame } from "@/components/games/play/MimeGuessGame";
 import { TheoryQuizGame } from "@/components/games/play/TheoryQuizGame";
-import type { GameId } from "@/components/games/games-section";
+import { useEffect } from "react";
+
+type GameId = "guess_sign" | "mime_guess" | "quiz_lsf" | "conversation";
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState('accueil');
-  const { data: progress } = useProgress();
-  const [activeGame, setActiveGame] = useState<null | Exclude<GameId, "conversation">>(null);
-  const [completedGames, setCompletedGames] = useState<Set<GameId>>(new Set());
+  const [activeTab, setActiveTab] = useState("accueil");
+  const [activeGame, setActiveGame] = useState<GameId | null>(null);
 
+  const [refreshKey, setRefreshKey] = useState(0);
 
+  useEffect(() => {
+    const onRefresh = () => setRefreshKey((k) => k + 1);
+    window.addEventListener(DASHBOARD_REFRESH_EVENT, onRefresh);
+    return () => window.removeEventListener(DASHBOARD_REFRESH_EVENT, onRefresh);
+  }, []);
 
   const renderContent = () => {
-        if (activeGame) {
-      const onExit = (done: boolean) => {
-        if (done) {
-          setCompletedGames((prev) => new Set(prev).add(activeGame));
-        }
-        setActiveGame(null);
-      };
+    // ✅ si un jeu est actif, on force l’affichage du jeu
+    if (activeGame) {
+      const common = { onExit: () => setActiveGame(null) };
 
       switch (activeGame) {
         case "guess_sign":
-          return <GuessSignGame onExit={onExit} />;
+          return <GuessSignGame {...common} />;
         case "mime_guess":
-          return <MimeGuessGame onExit={onExit} />;
+          return <MimeGuessGame {...common} />;
         case "quiz_lsf":
-          return <TheoryQuizGame onExit={onExit} />;
+          return <TheoryQuizGame {...common} />;
+        default:
+          return <TheoryQuizGame {...common} />;
       }
     }
 
@@ -46,40 +51,42 @@ const Index = () => {
       case "jeux":
         return (
           <GamesSection
-            onPlayGame={setActiveGame}
-            completedGames={completedGames}
+            onPlayGame={(id) => {
+              setActiveGame(id);
+              setActiveTab("jeux");
+            }}
           />
         );
-
-      case 'dictionnaire':
+      case "dictionnaire":
         return <DictionarySection />;
-      case 'historique':
+      case "cours": // ✅ AJOUT
+        return <CoursesSection />;
+      case "historique":
         return <HistorySection />;
-      case 'profil':
+      case "profil":
         return <ProfileSection />;
-      case 'defis':
+      case "defis":
         return <ChallengesSection />;
-      case 'lecon':
-        return <DailyLesson onBack={() => setActiveTab('accueil')} />;
+      case "lecon":
+        return <DailyLesson onBack={() => setActiveTab("accueil")} />;
       default:
         return (
           <div className="p-4 pb-20">
-            <HeroSection onStartLesson={() => setActiveTab('lecon')} />
+            <HeroSection onStartLesson={() => setActiveTab("lecon")} />
             <QuickActions onNavigate={setActiveTab} />
           </div>
         );
-    }
+          }
   };
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="relative">
-        {renderContent()}
-      </main>
-      
+      <main className="relative">{renderContent()}</main>
       <MobileNav activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
 };
 
 export default Index;
+const DASHBOARD_REFRESH_EVENT = "dashboard:refresh";
+

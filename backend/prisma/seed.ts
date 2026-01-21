@@ -17,8 +17,8 @@ async function main() {
     update: {},
     create: {
       id: "lesson-1",
-      title: "Dire bonjour",
-      videoUrl: "/videos/bonjour.mp4",
+      title: "Bonjour, ça va ?, oui/non, au revoir.",
+      videoUrl: "/videos/lesson 1/bonjour.mp4",
       question: "Que signifie ce signe ?",
       choices: ["Bonjour", "Merci", "Au revoir"],
       correctIndex: 0,
@@ -33,7 +33,7 @@ async function main() {
     {
       word: "Bonjour",
       description: "Salutation utilisée en journée.",
-      videoUrl: "/videos/bonjour.mp4",
+      videoUrl: "/videos/lesson 1/bonjour.mp4",
       category: "Salutations",
       difficulty: "facile",
     },

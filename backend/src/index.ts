@@ -51,11 +51,11 @@ const course = {
 
 const lesson = {
   id: "lesson-1",
-  title: "Dire bonjour",
+  title: "Bonjour, ça va ?, oui/non, au revoir.",
   steps: [
     {
       type: "video",
-      videoUrl: "/videos/bonjour.mp4",
+      videoUrl: "/videos/lesson 1/bonjour.mp4",
     },
     {
       type: "qcm",
@@ -70,7 +70,7 @@ const dictionary = [
   {
     id: "sign-1",
     word: "Bonjour",
-    videoUrl: "/videos/bonjour.mp4",
+    videoUrl: "/videos/lesson 1/bonjour.mp4",
   },
 ];
 
@@ -239,39 +239,118 @@ app.get("/api/progress/me/lesson/:lessonId/attempt", requireAuth, async (req: Au
 });
 
 // backend/src/index.ts
+// backend/src/index.ts
 app.get("/api/history/week", requireAuth, async (req: AuthRequest, res) => {
   try {
-      const userId = req.userId!;
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
-
+    const userId = req.userId!;
     const from = String(req.query.from ?? "").trim(); // "YYYY-MM-DD"
-    const to = String(req.query.to ?? "").trim();     // "YYYY-MM-DD"
+    const to = String(req.query.to ?? "").trim(); // "YYYY-MM-DD"
 
     if (!from || !to) {
       return res.status(400).json({ error: "Missing from/to (YYYY-MM-DD)" });
     }
 
+    // Helper: dateKey en UTC (cohérent avec frontend toISOString().slice(0,10))
+    const toDateKeyUTC = (d: Date) => d.toISOString().slice(0, 10);
+
     const fromDate = new Date(`${from}T00:00:00.000Z`);
     const toDate = new Date(`${to}T23:59:59.999Z`);
 
-    // 1) attempts de la semaine
-    const attempts = await prisma.lessonAttempt.findMany({
-      where: {
-        userId,
-        createdAt: { gte: fromDate, lte: toDate },
-      },
+    // 1) Attempts semaine (leçons + jeux)
+    const lessonAttempts = await prisma.lessonAttempt.findMany({
+      where: { userId, createdAt: { gte: fromDate, lte: toDate } },
       select: { createdAt: true, lessonId: true, isCorrect: true, xpAwarded: true },
       orderBy: { createdAt: "asc" },
     });
 
-    // 2) progress user (XP + leçons terminées)
+    const gameAttempts = await prisma.gameAttempt.findMany({
+      where: { userId, createdAt: { gte: fromDate, lte: toDate } },
+      select: { createdAt: true, gameId: true, score: true, xpAwarded: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // 2) User progress (XP + leçons terminées)
     const progress = await prisma.userProgress.findUnique({
       where: { userId },
       select: { xp: true, completedLessons: true },
     });
 
+    // 3) Days[] sur la semaine [from..to]
+    const lessonDaysSet = new Set(lessonAttempts.map((a) => toDateKeyUTC(a.createdAt)));
+    const gameDaysSet = new Set(gameAttempts.map((a) => toDateKeyUTC(a.createdAt)));
+
+    const days: Array<{
+      date: string; // YYYY-MM-DD
+      label: string; // L M M J V S D
+      didActivity: boolean;
+      isToday: boolean;
+    }> = [];
+
+    const labels = ["D", "L", "M", "M", "J", "V", "S"]; // getUTCDay(): 0=dimanche
+    const todayKey = toDateKeyUTC(new Date());
+
+    for (
+      let d = new Date(fromDate);
+      d.getTime() <= toDate.getTime();
+      d = new Date(d.getTime() + 24 * 60 * 60 * 1000)
+    ) {
+      const key = toDateKeyUTC(d);
+      const didActivity = lessonDaysSet.has(key) || gameDaysSet.has(key);
+
+      days.push({
+        date: key,
+        label: labels[d.getUTCDay()],
+        didActivity,
+        isToday: key === todayKey,
+      });
+    }
+
+    const activeDaysCount = days.filter((x) => x.didActivity).length;
+
+    // 4) Streak (compter jours consécutifs jusqu’à aujourd’hui)
+    // On regarde les 30 derniers jours d’activité (leçon + jeu)
+    const last30 = new Date();
+    last30.setUTCDate(last30.getUTCDate() - 30);
+
+    const lastLesson = await prisma.lessonAttempt.findMany({
+      where: { userId, createdAt: { gte: last30 } },
+      select: { createdAt: true },
+    });
+
+    const lastGames = await prisma.gameAttempt.findMany({
+      where: { userId, createdAt: { gte: last30 } },
+      select: { createdAt: true },
+    });
+
+    const activitySet = new Set<string>();
+    for (const a of lastLesson) activitySet.add(toDateKeyUTC(a.createdAt));
+    for (const a of lastGames) activitySet.add(toDateKeyUTC(a.createdAt));
+
+    let streakDays = 0;
+    // streak: si aujourd’hui pas d’activité => streak 0
+    // sinon on remonte jour par jour
+    for (let i = 0; i < 365; i++) {
+      const dt = new Date();
+      dt.setUTCDate(dt.getUTCDate() - i);
+      const key = toDateKeyUTC(dt);
+
+      if (!activitySet.has(key)) break;
+      streakDays++;
+    }
+
+    // 5) globalProgressPct (basé sur leçons terminées / total leçons)
+    const totalLessons = await prisma.lesson.count();
+    const completedLessonsCount = progress?.completedLessons?.length ?? 0;
+    const globalProgressPct =
+      totalLessons === 0 ? 0 : Math.round((completedLessonsCount / totalLessons) * 100);
+
     return res.json({
-      attempts,
+      days,
+      activeDaysCount,
+      streakDays,
+      globalProgressPct,
+      attempts: lessonAttempts,
+      gameAttempts,
       xp: progress?.xp ?? 0,
       completedLessons: progress?.completedLessons ?? [],
     });
@@ -279,6 +358,153 @@ app.get("/api/history/week", requireAuth, async (req: AuthRequest, res) => {
     console.error(e);
     return res.status(500).json({ error: "Internal server error" });
   }
+});
+
+
+// ---------- helpers ----------
+function dayKeyLocal(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  // YYYY-MM-DD local
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const dd = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+function computeStreakFromDaySet(activeDays: Set<string>) {
+  let streak = 0;
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+
+  while (true) {
+    const k = dayKeyLocal(d);
+    if (!activeDays.has(k)) break;
+    streak++;
+    d.setDate(d.getDate() - 1);
+  }
+  return streak;
+}
+
+// ---------- GAMES: complete ----------
+app.post("/api/games/complete", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+  const { gameId, score } = req.body as { gameId?: string; score?: number };
+
+  if (!gameId || typeof score !== "number") {
+    return res.status(400).json({ error: "gameId and score required" });
+  }
+
+  // ✅ 1 essai par jeu (comme les leçons)
+  const already = await prisma.gameAttempt.findFirst({ where: { userId, gameId } });
+  if (already) return res.status(409).json({ error: "Already played" });
+
+  // XP: simple et stable
+  // score 0..100 => xp 0..20 (min 5 si >0)
+  const xpAwarded = score <= 0 ? 0 : Math.max(5, Math.round((score / 100) * 20));
+
+  const result = await prisma.$transaction(async (tx) => {
+    const attempt = await tx.gameAttempt.create({
+      data: { userId, gameId, score, xpAwarded },
+    });
+
+    const progress = await tx.userProgress.upsert({
+      where: { userId },
+      update: { xp: { increment: xpAwarded } },
+      create: { userId, xp: xpAwarded, completedLessons: [] },
+    });
+
+    return { attempt, progress };
+  });
+
+  res.json({
+    ok: true,
+    gameId,
+    score,
+    xpAwarded,
+    totalXp: result.progress.xp,
+  });
+});
+
+// ---------- GAMES: stats ----------
+app.get("/api/games/stats", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+
+  const attempts = await prisma.gameAttempt.findMany({
+    where: { userId },
+    select: { gameId: true, score: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const gamesCompleted = attempts.length;
+  const avgScore =
+    gamesCompleted === 0
+      ? 0
+      : Math.round(attempts.reduce((s, a) => s + a.score, 0) / gamesCompleted);
+
+  // “défi du jour”: 5 mini-jeux joués aujourd’hui
+  const todayKey = dayKeyLocal(new Date());
+  const playedToday = new Set(
+    attempts.filter((a) => dayKeyLocal(a.createdAt) === todayKey).map((a) => a.gameId)
+  ).size;
+
+  res.json({
+    attempts,
+    gamesCompleted,
+    avgScore,
+    badgesWon: Math.floor(gamesCompleted / 3), // simple (ex: 1 badge / 3 jeux)
+    dailyTarget: 5,
+    dailyProgress: Math.min(5, playedToday),
+    playedGameIds: attempts.map((a) => a.gameId),
+  });
+});
+
+// ---------- ACTIVITY: stats (leçons + jeux) ----------
+app.get("/api/activity/stats", requireAuth, async (req: AuthRequest, res) => {
+  const userId = req.userId!;
+
+  const [lessonAttempts, gameAttempts, progress, totalLessons] = await Promise.all([
+    prisma.lessonAttempt.findMany({
+      where: { userId },
+      select: { createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 3650,
+    }),
+    prisma.gameAttempt.findMany({
+      where: { userId },
+      select: { createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 3650,
+    }),
+    prisma.userProgress.findUnique({
+      where: { userId },
+      select: { xp: true, completedLessons: true },
+    }),
+    prisma.lesson.count(),
+  ]);
+
+  const activeDays = new Set<string>();
+  for (const a of lessonAttempts) activeDays.add(dayKeyLocal(a.createdAt));
+  for (const g of gameAttempts) activeDays.add(dayKeyLocal(g.createdAt));
+
+  const streakDays = computeStreakFromDaySet(activeDays);
+
+  const today = dayKeyLocal(new Date());
+  const didActivityToday = activeDays.has(today);
+
+  const completedLessons = progress?.completedLessons ?? [];
+  const globalProgressPct =
+    totalLessons <= 0 ? 0 : Math.min(100, Math.round((completedLessons.length / totalLessons) * 100));
+
+  res.json({
+    xp: progress?.xp ?? 0,
+    streakDays,
+    didActivityToday,
+    completedLessonsCount: completedLessons.length,
+    totalLessons,
+    globalProgressPct,
+    firstActivityUnlocked: activeDays.size > 0,
+  });
 });
 
 
@@ -332,71 +558,15 @@ app.post("/api/attempts", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-app.post("/api/games/complete", requireAuth, async (req: AuthRequest, res) => {
-  const userId = req.userId!;
-  const { gameId, score } = req.body as {
-    gameId: string;
-    score: number;
-  };
+// ---------- GAMES ----------
+const DAILY_GAMES_TARGET = 5 as const;
 
-  if (!gameId || typeof score !== "number") {
-    return res.status(400).json({ error: "gameId & score required" });
-  }
+function startOfTodayUTC() {
+  const d = new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+}
 
-  // règle simple XP
-  const xpAwarded =
-    score >= 80 ? 20 :
-    score >= 50 ? 10 :
-    5;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.gameAttempt.create({
-      data: { userId, gameId, score, xpAwarded },
-    });
-
-    await tx.userProgress.update({
-      where: { userId },
-      data: { xp: { increment: xpAwarded } },
-    });
-  });
-
-  res.json({ xpAwarded });
-});
-
-// ------------------ GAMES API ------------------
-
-// GET stats (utilisé par GamesSection)
-app.get("/api/games/stats", requireAuth, async (req: AuthRequest, res) => {
-  const userId = req.userId!;
-  const attempts = await prisma.gameAttempt.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    select: { gameId: true, score: true, xpAwarded: true, createdAt: true },
-  });
-
-  const gamesCompleted = new Set(attempts.map(a => a.gameId)).size;
-
-  const avgScore =
-    attempts.length === 0 ? 0 : Math.round(attempts.reduce((s, a) => s + a.score, 0) / attempts.length);
-
-  // badges simple (à toi de changer plus tard)
-  const badgesWon =
-    (gamesCompleted >= 1 ? 1 : 0) + (gamesCompleted >= 3 ? 1 : 0) + (avgScore >= 80 ? 1 : 0);
-
-  // “défi du jour” : count games done today (sur date locale simple)
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayCount = attempts.filter(a => new Date(a.createdAt).getTime() >= today.getTime()).length;
-
-  res.json({
-    gamesCompleted,
-    avgScore,
-    badgesWon,
-    dailyProgress: Math.min(todayCount, 5),
-    dailyTarget: 5,
-    completedGameIds: Array.from(new Set(attempts.map(a => a.gameId))),
-  });
-});
 
 // POST attempt (sauvegarde score + ajoute XP) + bloque replay
 app.post("/api/games/attempts", requireAuth, async (req: AuthRequest, res) => {

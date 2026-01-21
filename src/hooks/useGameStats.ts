@@ -1,41 +1,44 @@
 import { useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
 
-export type GameStatsSummary = {
+export type GameStats = {
+  attempts: { gameId: string; score: number; createdAt: string }[];
   gamesCompleted: number;
   avgScore: number;
   badgesWon: number;
-  dailyProgress: number;
   dailyTarget: number;
-  completedGameIds: string[];
+  dailyProgress: number;
+  playedGameIds: string[];
 };
 
 export function useGameStats() {
-  const [summary, setSummary] = useState<GameStatsSummary>({
-    gamesCompleted: 0,
-    avgScore: 0,
-    badgesWon: 0,
-    dailyProgress: 0,
-    dailyTarget: 5,
-    completedGameIds: [],
-  });
-
+  const [data, setData] = useState<GameStats | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [isError, setError] = useState(false);
 
-  const reload = () => {
+  useEffect(() => {
+    let mounted = true;
     setLoading(true);
     setError(false);
 
-    apiGet<GameStatsSummary>("/api/games/stats")
-      .then(setSummary)
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
-  };
+    apiGet<GameStats>("/api/games/stats")
+      .then((d) => mounted && setData(d))
+      .catch(() => mounted && setError(true))
+      .finally(() => mounted && setLoading(false));
 
-  useEffect(() => {
-    reload();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  return { summary, isLoading, isError, reload };
+  const summary = {
+    gamesCompleted: data?.gamesCompleted ?? 0,
+    avgScore: data?.avgScore ?? 0,
+    badgesWon: data?.badgesWon ?? 0,
+    dailyTarget: data?.dailyTarget ?? 5,
+    dailyProgress: data?.dailyProgress ?? 0,
+    playedGameIds: new Set(data?.playedGameIds ?? []),
+  };
+
+  return { data, summary, isLoading, isError };
 }

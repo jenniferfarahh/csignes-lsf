@@ -11,7 +11,13 @@ interface HeroSectionProps {
 
 export function HeroSection({ onStartLesson }: HeroSectionProps) {
   const { user } = useAuth();
-  const { isLoading, isError, streak, todayProgress, weeklyGoal, completedDays } = useDashboardStats();
+  const { data, isLoading, isError } = useDashboardStats();
+  const streak = data?.streak ?? 0;
+  const todayProgress = data?.todayProgress ?? 0;
+  const weeklyGoal = data?.weeklyGoal ?? 5;
+  const completedDays = data?.completedDays ?? 0;
+  // const { ... } = useDashboardStats(refreshKey); // Uncomment and define refreshKey if needed
+
 
   return (
     <div className="relative overflow-hidden rounded-2xl md:rounded-3xl bg-card border shadow-sm p-4 md:p-6 mb-6">

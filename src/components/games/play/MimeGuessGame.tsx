@@ -1,123 +1,141 @@
 import { useMemo, useState } from "react";
-import type { SignDTO } from "@/hooks/useSigns";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useSigns } from "@/hooks/useSigns";
 import { completeGame } from "@/hooks/useCompleteGame";
-import { GameResult } from "./GameResult";
 
-function pickRandom<T>(arr: T[]) {
-  return arr[Math.floor(Math.random() * arr.length)];
+type Props = { onBack: () => void };
+
+function shuffle<T>(arr: T[]) {
+  return [...arr].sort(() => Math.random() - 0.5);
 }
 
-function shuffle<T>(a: T[]) {
-  return [...a].sort(() => Math.random() - 0.5);
-}
+export function MimeGuessGame({ onBack }: Props) {
+  const { data: signs, isLoading, isError } = useSigns();
+  const usable = signs ?? [];
 
-type Props = {
-  signs: SignDTO[];
-  onBack: () => void;
-  onCompleted: () => void;
-};
-
-export function MimeGuessGame({ signs, onBack, onCompleted }: Props) {
-  const [phase, setPhase] = useState<"watch" | "answer" | "result">("watch");
-  const [selected, setSelected] = useState<string | null>(null);
+  const [step, setStep] = useState<"play" | "result">("play");
   const [score, setScore] = useState(0);
-  const [xp, setXp] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [idx, setIdx] = useState(0);
+  const [xpAwarded, setXpAwarded] = useState<number | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  const question = useMemo(() => {
-    const correct = pickRandom(signs);
-    const others = shuffle(signs.filter(s => s.id !== correct.id)).slice(0, 3);
-    const choices = shuffle([correct, ...others]);
-    return { correct, choices };
-  }, [signs]);
+  const rounds = useMemo(() => {
+    if (usable.length < 4) return [];
+    return Array.from({ length: 7 }, () => {
+      const pool = shuffle(usable).slice(0, 4);
+      const correct = pool[Math.floor(Math.random() * pool.length)];
+      return { pool, correctId: correct.id, videoUrl: correct.videoUrl, word: correct.word };
+    });
+  }, [usable]);
 
-  async function finish(isCorrect: boolean) {
-    // mime_guess un peu plus “reward”: score 100 si correct sinon 50 (tu as mimé)
-    const s = isCorrect ? 100 : 50;
-    setScore(s);
+  const current = rounds[idx];
 
-    setSaving(true);
-    setError(null);
+  async function finish(finalScore: number) {
     try {
-      const res = await completeGame("mime_guess", s);
-      setXp(res.xpAwarded);
-      setPhase("result");
-      onCompleted();
+      setApiError(null);
+      const res = await completeGame("mime_guess", finalScore);
+      setXpAwarded(res.xpAwarded);
     } catch (e: any) {
-      setError(e?.message ?? "Erreur");
+      setApiError(e?.message ?? "Erreur");
     } finally {
-      setSaving(false);
+      setStep("result");
     }
   }
 
-  if (phase === "result") {
-    return <GameResult title="Mime et devine" score={score} xpAwarded={xp} onBack={onBack} />;
+  if (isLoading) {
+    return (
+      <div className="p-4 pb-20">
+        <Card className="p-4">Chargement…</Card>
+      </div>
+    );
+  }
+
+  if (isError || usable.length < 4) {
+    return (
+      <div className="p-4 pb-20">
+        <Button variant="ghost" onClick={onBack}>← Retour</Button>
+        <Card className="p-4 mt-4">
+          <p className="text-sm text-destructive">
+            Pas assez de signes pour jouer. Ajoute au moins 4 signes dans la DB.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (step === "result") {
+    return (
+      <div className="p-4 pb-20">
+        <Button variant="ghost" onClick={onBack}>← Retour</Button>
+
+        <Card className="p-5 mt-4">
+          <h2 className="text-xl font-bold mb-2">Résultat — Mime et devine</h2>
+          <p className="text-muted-foreground mb-4">Ton score: <span className="font-semibold">{score}%</span></p>
+
+          {typeof xpAwarded === "number" ? (
+            <Badge className="bg-success text-success-foreground">+{xpAwarded} XP</Badge>
+          ) : (
+            <Badge variant="outline">XP non enregistré</Badge>
+          )}
+
+          {apiError && <p className="text-sm text-destructive mt-3">{apiError}</p>}
+
+          <Button className="w-full mt-4" onClick={onBack}>Retour aux mini-jeux</Button>
+        </Card>
+      </div>
+    );
   }
 
   return (
     <div className="p-4 pb-20">
-      <Button variant="ghost" onClick={onBack} className="mb-4">
-        ← Quitter
-      </Button>
+      <Button variant="ghost" onClick={onBack}>← Quitter</Button>
 
-      <div className="mb-4">
-        <h1 className="text-xl font-bold">Mime et devine</h1>
-        <p className="text-muted-foreground text-sm">
-          Regarde le GIF, mime-le, puis réponds
-        </p>
+      <div className="mt-2 mb-4">
+        <h1 className="text-2xl font-bold">Mime le signe</h1>
+        <p className="text-muted-foreground">Round {idx + 1}/{rounds.length}</p>
       </div>
 
-      <Card className="p-4 mb-4">
+      <Card className="p-4">
         <div className="rounded-xl overflow-hidden bg-muted">
-          <img
-            src={question.correct.videoUrl}
-            alt={question.correct.word}
-            className="w-full max-h-[320px] object-contain"
-          />
+          {current?.videoUrl?.endsWith(".gif") ? (
+            <img src={current.videoUrl} className="w-full max-h-[320px] object-contain" />
+          ) : (
+            <video src={current?.videoUrl} controls autoPlay loop className="w-full max-h-[320px] object-contain" />
+          )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-          <Badge variant="outline">{phase === "watch" ? "Étape 1/2" : "Étape 2/2"}</Badge>
-          <Badge className="bg-warning text-warning-foreground">Mime d’abord 🔥</Badge>
+        <p className="mt-4 font-semibold">Choisis le bon mot :</p>
+
+        <div className="grid grid-cols-1 gap-2 mt-3">
+          {current.pool.map((s) => (
+            <Button
+              key={s.id}
+              variant="outline"
+              onClick={async () => {
+                const ok = s.id === current.correctId;
+                const newScore = score + (ok ? Math.round(100 / rounds.length) : 0);
+                const next = idx + 1;
+
+                setScore(newScore);
+
+                if (next >= rounds.length) {
+                  await finish(Math.min(100, newScore));
+                } else {
+                  setIdx(next);
+                }
+              }}
+            >
+              {s.word}
+            </Button>
+          ))}
         </div>
+
+        <p className="text-xs text-muted-foreground mt-4">
+          Astuce: mime le signe avant de répondre 😉
+        </p>
       </Card>
-
-      {phase === "watch" && (
-        <Button className="w-full rounded-xl" onClick={() => setPhase("answer")}>
-          J’ai mimé, je réponds
-        </Button>
-      )}
-
-      {phase === "answer" && (
-        <>
-          <div className="space-y-3">
-            {question.choices.map((c) => (
-              <Button
-                key={c.id}
-                variant={selected === c.id ? "default" : "outline"}
-                className="w-full justify-start rounded-xl"
-                onClick={() => setSelected(c.id)}
-              >
-                {c.word}
-              </Button>
-            ))}
-          </div>
-
-          {error && <p className="text-sm text-destructive mt-3">{error}</p>}
-
-          <Button
-            className="w-full mt-4 rounded-xl"
-            disabled={!selected || saving}
-            onClick={() => finish(selected === question.correct.id)}
-          >
-            Valider
-          </Button>
-        </>
-      )}
     </div>
   );
 }

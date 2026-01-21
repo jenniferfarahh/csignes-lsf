@@ -1,90 +1,72 @@
+// src/components/history/history-section.tsx
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressRing } from "@/components/ui/progress-ring";
 import { Calendar, Trophy, Flame, TrendingUp } from "lucide-react";
-import { useMemo } from "react";
-import { useHistoryWeek } from "@/hooks/useHistoryWeek";
+
+type DayItem = {
+  date: string;
+  label: string; // L M M J V S D
+  didActivity: boolean;
+  isToday?: boolean;
+};
 
 type Achievement = {
   id: string;
   title: string;
   description: string;
   progressPct: number; // 0..100
-  progressLabel: string; // ex: "3/7"
+  progressLabel: string; // ex: "1/7"
   earned: boolean;
   meta?: string;
 };
 
-function buildAchievementsFromHistory(args: {
-  streakDays: number;
-  globalProgressPct: number;
-  activeDaysCount: number;
-}) {
-  const { streakDays, globalProgressPct, activeDaysCount } = args;
+export function HistorySection() {
+  // ✅ MOCK DATA FIXE (même pour tout le monde)
+  const activeDaysCount: number = 1;      // 1 jour actif cette semaine
+  const streakDays: number = 1;           // série actuelle = 1
+  const globalProgressPct: number = 10;   // progression globale = 10%
 
-  // ✅ Tout est calculé côté frontend à partir des données réelles API
-  const firstStepEarned = activeDaysCount >= 1;
-  const firstStepPct = firstStepEarned ? 100 : 0;
-
-  const regularityTarget = 7;
-  const regularityEarned = streakDays >= regularityTarget;
-  const regularityCount = Math.min(regularityTarget, streakDays);
-  const regularityPct = Math.round((regularityCount / regularityTarget) * 100);
-
-  // Exemple "progression globale" => badge si 100%
-  const completionEarned = globalProgressPct >= 100;
+  // ✅ Semaine: flamme sur Mercredi (3ème "M")
+  const days: DayItem[] = [
+    { date: "2026-01-19", label: "L", didActivity: false },
+    { date: "2026-01-20", label: "M", didActivity: false },
+    { date: "2026-01-21", label: "M", didActivity: true, isToday: true }, // 🔥 mercredi (aujourd'hui)
+    { date: "2026-01-22", label: "J", didActivity: false },
+    { date: "2026-01-23", label: "V", didActivity: false },
+    { date: "2026-01-24", label: "S", didActivity: false },
+    { date: "2026-01-25", label: "D", didActivity: false },
+  ];
 
   const achievements: Achievement[] = [
     {
       id: "first_step",
       title: "Premier pas",
       description: "Faire une activité (cours/jeu) au moins une fois",
-      earned: firstStepEarned,
-      progressPct: firstStepPct,
-      progressLabel: firstStepEarned ? "1/1" : "0/1",
-      meta: firstStepEarned ? "Débloqué" : "À débloquer",
+      earned: true,
+      progressPct: 100,
+      progressLabel: "1/1",
+      meta: "Débloqué",
     },
     {
       id: "regularity",
       title: "Régularité",
       description: "7 jours consécutifs d’activité",
-      earned: regularityEarned,
-      progressPct: regularityPct,
-      progressLabel: `${regularityCount}/7`,
-      meta: regularityEarned ? "Débloqué" : "Continue ta série 🔥",
+      earned: false,
+      progressPct: Math.round((1 / 7) * 100),
+      progressLabel: "1/7",
+      meta: "Continue ta série 🔥",
     },
     {
       id: "completion",
       title: "Persévérant",
       description: "Atteindre 100% de progression globale",
-      earned: completionEarned,
-      progressPct: Math.min(100, Math.max(0, globalProgressPct)),
-      progressLabel: `${Math.min(100, Math.max(0, globalProgressPct))}%`,
-      meta: completionEarned ? "Débloqué" : "Avance dans les leçons",
+      earned: false,
+      progressPct: 10,
+      progressLabel: "10%",
+      meta: "Avance dans les leçons",
     },
   ];
-
-  return achievements;
-}
-// ✅ Résumé: génère des badges/achievements sans mock, seulement depuis les données API.
-
-export function HistorySection() {
-  const { data, isLoading, isError } = useHistoryWeek();
-
-  const days = data?.days ?? [];
-  const activeDaysCount = data?.activeDaysCount ?? 0;
-  const streakDays = data?.streakDays ?? 0;
-  const globalProgressPct = data?.globalProgressPct ?? 0;
-
-  const achievements = useMemo(
-    () =>
-      buildAchievementsFromHistory({
-        streakDays,
-        globalProgressPct,
-        activeDaysCount,
-      }),
-    [streakDays, globalProgressPct, activeDaysCount]
-  );
 
   return (
     <div className="p-4 pb-20">
@@ -92,18 +74,6 @@ export function HistorySection() {
         <h1 className="text-2xl font-bold text-foreground mb-2">Historique & Progrès</h1>
         <p className="text-muted-foreground">Suis ton évolution et tes accomplissements</p>
       </div>
-
-      {isLoading && (
-        <Card className="p-4 mb-4">
-          <p className="text-sm text-muted-foreground">Chargement de tes données...</p>
-        </Card>
-      )}
-
-      {isError && (
-        <Card className="p-4 mb-4">
-          <p className="text-sm text-destructive">Impossible de charger l’historique depuis l’API.</p>
-        </Card>
-      )}
 
       {/* Weekly Overview */}
       <Card className="p-4 mb-6">

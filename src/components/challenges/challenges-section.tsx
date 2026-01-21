@@ -19,8 +19,16 @@ interface Challenge {
 }
 
 export function ChallengesSection() {
-  const { isLoading, isError, xp, streak, completedDays, weeklyGoal } = useDashboardStats();
+  const { data, isLoading, isError } = useDashboardStats();
+  const xp = data?.xp ?? 0;
+  const streak = data?.streak ?? 0;
+  const completedDays = data?.completedDays ?? 0;
+  const weeklyGoal = data?.weeklyGoal ?? 5;
+
   const hw = useHistoryWeek();
+  // Removed refreshKey
+  const dashboardStats = useDashboardStats();
+
 
   // today activity (réel)
   const todayKey = new Date().toISOString().slice(0, 10);

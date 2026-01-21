@@ -1,58 +1,63 @@
-import { useMemo } from "react";
-import { useHistoryWeek } from "@/hooks/useHistoryWeek";
-import { useProgress } from "@/hooks/useProgress";
+// src/hooks/useDashboardStats.ts
+import { useQuery } from "@tanstack/react-query";
+import { apiGet } from "@/lib/api";
 
-const TOTAL_LESSONS = 12; // mets le vrai total si différent
+type HistoryWeekDTO = {
+  days: Array<{
+    date: string; // YYYY-MM-DD
+    label: string; // L M ...
+    didActivity: boolean;
+    isToday: boolean;
+  }>;
+  activeDaysCount: number;
+  streakDays: number;
+  globalProgressPct: number;
+};
+
+type ProgressMe = {
+  xp: number;
+};
+
+function startOfWeekUTC(d = new Date()) {
+  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = x.getUTCDay(); // 0=dim
+  const diff = day === 0 ? -6 : 1 - day; // lundi
+  x.setUTCDate(x.getUTCDate() + diff);
+  return x;
+}
+
+function endOfWeekUTC(d = new Date()) {
+  const s = startOfWeekUTC(d);
+  const e = new Date(s);
+  e.setUTCDate(e.getUTCDate() + 6);
+  return e;
+}
+
+const toKey = (d: Date) => d.toISOString().slice(0, 10);
 
 export function useDashboardStats() {
-  const hw = useHistoryWeek();       // { data, isLoading, isError }
-  const pr = useProgress();          // { data, isLoading, isError }
-
-  const isLoading = hw.isLoading || pr.isLoading;
-  const isError = hw.isError || pr.isError;
-
-  const xp = pr.data?.xp ?? 0;
-  const completedLessons = pr.data?.completedLessons ?? [];
-
-  const levelNumber = 1 + Math.floor(xp / 100);
-
-  // "progression du jour" = ici on fait simple & réel:
-  // si activité aujourd'hui => 100%, sinon 0%. (Pas de mock)
-  const todayProgress = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const key = today.toISOString().slice(0, 10);
-
-    const didToday = hw.data?.days?.some((d) => d.date === key && d.didActivity) ?? false;
-    return didToday ? 100 : 0;
-  }, [hw.data?.days]);
-
-  // progrès global réel
-  const globalProgressPct = useMemo(() => {
-    if (TOTAL_LESSONS <= 0) return 0;
-    return Math.min(100, Math.round((completedLessons.length / TOTAL_LESSONS) * 100));
-  }, [completedLessons.length]);
-
-  // "défis" = on met un objectif réel calculable (ex: 5 jours actifs semaine)
   const weeklyGoal = 5;
-  const completedDays = hw.data?.activeDaysCount ?? 0;
 
-  return {
-    isLoading,
-    isError,
+  return useQuery({
+    queryKey: ["dashboard-stats"],
+    queryFn: async () => {
+      const from = toKey(startOfWeekUTC());
+      const to = toKey(endOfWeekUTC());
 
-    // user stats
-    xp,
-    levelNumber,
-    completedLessonsCount: completedLessons.length,
+      const [p, hw] = await Promise.all([
+        apiGet<ProgressMe>("/api/progress/me"),
+        apiGet<HistoryWeekDTO>(`/api/history/week?from=${from}&to=${to}`),
+      ]);
 
-    // week stats (réel)
-    streak: hw.data?.streakDays ?? 0,
-    completedDays,
-    weeklyGoal,
+      const didActivityToday = hw.days?.some((d) => d.isToday && d.didActivity) ?? false;
 
-    // UI stats
-    todayProgress,
-    globalProgressPct,
-  };
+      return {
+        xp: p.xp ?? 0,
+        streak: hw.streakDays ?? 0,
+        todayProgress: didActivityToday ? 100 : 0,
+        weeklyGoal,
+        completedDays: hw.activeDaysCount ?? 0,
+      };
+    },
+  });
 }

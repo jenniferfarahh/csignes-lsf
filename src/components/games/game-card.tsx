@@ -1,18 +1,24 @@
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Star, Clock, Trophy } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Clock, Lock } from "lucide-react";
 
-interface GameCardProps {
+type Props = {
   title: string;
   description: string;
-  difficulty: 'facile' | 'moyen' | 'difficile';
+  difficulty: "facile" | "moyen" | "difficile";
   duration: string;
   score?: number;
   isCompleted?: boolean;
   isLocked?: boolean;
   onPlay: () => void;
-}
+};
+
+const diffBadge: Record<Props["difficulty"], string> = {
+  facile: "bg-success/10 text-success border-success/20",
+  moyen: "bg-warning/10 text-warning border-warning/20",
+  difficile: "bg-destructive/10 text-destructive border-destructive/20",
+};
 
 export function GameCard({
   title,
@@ -20,61 +26,47 @@ export function GameCard({
   difficulty,
   duration,
   score,
-  isCompleted = false,
-  isLocked = false,
+  isCompleted,
+  isLocked,
   onPlay,
-}: GameCardProps) {
-  const difficultyColors = {
-    facile: 'bg-success text-success-foreground',
-    moyen: 'bg-warning text-warning-foreground',
-    difficile: 'bg-destructive text-destructive-foreground',
-  };
+}: Props) {
+  const disabled = !!isLocked || !!isCompleted;
+
+  const buttonLabel = isLocked ? "Débloquer" : isCompleted ? "Déjà joué" : "Jouer";
 
   return (
-    <Card className={`p-4 transition-all duration-300 hover:scale-[1.02] ${
-      isLocked ? 'opacity-50' : 'hover:shadow-lg'
-    }`}>
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex-1">
-          <h3 className="font-semibold text-lg mb-1">{title}</h3>
-          <p className="text-muted-foreground text-sm mb-2">{description}</p>
-          
-          <div className="flex gap-2 mb-3">
-            <Badge className={difficultyColors[difficulty]} variant="secondary">
+    <Card className={`p-4 transition-all ${disabled ? "opacity-70" : "hover:shadow-lg"}`}>
+      <div className="flex items-start justify-between">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-foreground">{title}</h3>
+          <p className="text-sm text-muted-foreground">{description}</p>
+
+          <div className="flex items-center gap-2 mt-3">
+            <Badge variant="outline" className={diffBadge[difficulty]}>
               {difficulty}
             </Badge>
-            
-            <Badge variant="outline" className="flex items-center gap-1">
-              <Clock size={12} />
-              {duration}
+            <Badge variant="outline" className="text-muted-foreground">
+              <Clock className="mr-1" size={14} /> {duration}
             </Badge>
+
+            {typeof score === "number" && (
+              <Badge variant="outline" className="text-muted-foreground">
+                Score {score}%
+              </Badge>
+            )}
           </div>
         </div>
-        
-        {isCompleted && (
-          <div className="flex items-center gap-1 text-success">
-            <Trophy size={16} />
-            <span className="text-sm font-medium">{score}</span>
-          </div>
-        )}
+
+        {isLocked && <Lock className="text-muted-foreground" size={18} />}
       </div>
 
-      <Button 
+      <Button
+        className={`w-full mt-4 ${isLocked ? "bg-muted text-muted-foreground" : ""}`}
         onClick={onPlay}
-        disabled={isLocked}
-        className="w-full rounded-xl font-medium transition-all duration-300"
-        variant={isCompleted ? "outline" : "default"}
+        disabled={disabled}
+        variant={isLocked ? "secondary" : "default"}
       >
-        {isLocked ? (
-          <>🔒 Débloquer</>
-        ) : isCompleted ? (
-          <>
-            <Star className="mr-2" size={16} />
-            Rejouer
-          </>
-        ) : (
-          'Jouer'
-        )}
+        {buttonLabel}
       </Button>
     </Card>
   );

@@ -1,113 +1,140 @@
 import { useMemo, useState } from "react";
-import type { SignDTO } from "@/hooks/useSigns";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useSigns } from "@/hooks/useSigns";
 import { completeGame } from "@/hooks/useCompleteGame";
-import { GameResult } from "./GameResult";
 
-type Props = {
-  signs: SignDTO[];
-  onBack: () => void;
-  onCompleted: () => void;
-};
+type Props = { onBack: () => void };
 
-function pickRandom<T>(arr: T[]) {
-  return arr[Math.floor(Math.random() * arr.length)];
+function shuffle<T>(arr: T[]) {
+  return [...arr].sort(() => Math.random() - 0.5);
 }
 
-function shuffle<T>(a: T[]) {
-  return [...a].sort(() => Math.random() - 0.5);
-}
+export function GuessSignGame({ onBack }: Props) {
+  const { data: signs, isLoading, isError } = useSigns();
+  const usable = signs ?? [];
 
-export function GuessSignGame({ signs, onBack, onCompleted }: Props) {
   const [step, setStep] = useState<"play" | "result">("play");
-  const [selected, setSelected] = useState<string | null>(null);
-  const [score, setScore] = useState(0);
-  const [xp, setXp] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [score, setScore] = useState(0); // 0..100
+  const [idx, setIdx] = useState(0);
+  const [xpAwarded, setXpAwarded] = useState<number | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  const question = useMemo(() => {
-    const correct = pickRandom(signs);
-    const others = shuffle(signs.filter(s => s.id !== correct.id)).slice(0, 3);
-    const choices = shuffle([correct, ...others]);
-    return { correct, choices };
-  }, [signs]);
+  const questions = useMemo(() => {
+    if (usable.length < 4) return [];
+    // 5 questions
+    return Array.from({ length: 5 }, () => {
+      const pool = shuffle(usable).slice(0, 4);
+      const correct = pool[Math.floor(Math.random() * pool.length)];
+      return { pool, correctId: correct.id, videoUrl: correct.videoUrl };
+    });
+  }, [usable]);
 
-  async function finish(isCorrect: boolean) {
-    const s = isCorrect ? 100 : 0;
-    setScore(s);
-    setSaving(true);
-    setError(null);
+  const current = questions[idx];
 
+  async function finish(finalScore: number) {
     try {
-      const res = await completeGame("guess_sign", s);
-      setXp(res.xpAwarded);
-      setStep("result");
-      onCompleted();
+      setApiError(null);
+      const res = await completeGame("guess_sign", finalScore);
+      setXpAwarded(res.xpAwarded);
     } catch (e: any) {
-      setError(e?.message ?? "Erreur");
+      setApiError(e?.message ?? "Erreur");
     } finally {
-      setSaving(false);
+      setStep("result");
     }
   }
 
-  if (step === "result") {
-    return <GameResult title="Devine le signe" score={score} xpAwarded={xp} onBack={onBack} />;
+  if (isLoading) {
+    return (
+      <div className="p-4 pb-20">
+        <Card className="p-4">Chargement…</Card>
+      </div>
+    );
   }
 
+  if (isError || usable.length < 4) {
+    return (
+      <div className="p-4 pb-20">
+        <Button variant="ghost" onClick={onBack}>← Retour</Button>
+        <Card className="p-4 mt-4">
+          <p className="text-sm text-destructive">
+            Pas assez de signes pour jouer. Ajoute au moins 4 signes dans la DB.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (step === "result") {
+    return (
+      <div className="p-4 pb-20">
+        <Button variant="ghost" onClick={onBack}>← Retour</Button>
+
+        <Card className="p-5 mt-4">
+          <h2 className="text-xl font-bold mb-2">Résultat — Devine le signe</h2>
+          <p className="text-muted-foreground mb-4">Ton score: <span className="font-semibold">{score}%</span></p>
+
+          {typeof xpAwarded === "number" ? (
+            <Badge className="bg-success text-success-foreground">+{xpAwarded} XP</Badge>
+          ) : (
+            <Badge variant="outline">XP non enregistré</Badge>
+          )}
+
+          {apiError && <p className="text-sm text-destructive mt-3">{apiError}</p>}
+
+          <Button className="w-full mt-4" onClick={onBack}>Retour aux mini-jeux</Button>
+        </Card>
+      </div>
+    );
+  }
+
+  // PLAY
   return (
     <div className="p-4 pb-20">
-      <Button variant="ghost" onClick={onBack} className="mb-4">
-        ← Quitter
-      </Button>
+      <Button variant="ghost" onClick={onBack}>← Quitter</Button>
 
-      <div className="mb-4">
-        <h1 className="text-xl font-bold">Devine le signe</h1>
-        <p className="text-muted-foreground text-sm">Choisis le bon mot correspondant au GIF</p>
+      <div className="mt-2 mb-4">
+        <h1 className="text-2xl font-bold">Devine le signe</h1>
+        <p className="text-muted-foreground">Question {idx + 1}/{questions.length}</p>
       </div>
 
-      <Card className="p-4 mb-4">
+      <Card className="p-4">
+        {/* videoUrl peut être .gif ou .mp4 */}
         <div className="rounded-xl overflow-hidden bg-muted">
-          {/* Si tes GIF sont en videoUrl, un <img> marche aussi */}
-          <img
-            src={question.correct.videoUrl}
-            alt={question.correct.word}
-            className="w-full max-h-[320px] object-contain"
-          />
+          {current?.videoUrl?.endsWith(".gif") ? (
+            <img src={current.videoUrl} className="w-full max-h-[320px] object-contain" />
+          ) : (
+            <video src={current?.videoUrl} controls autoPlay loop className="w-full max-h-[320px] object-contain" />
+          )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-          <Badge variant="outline">1 question</Badge>
-          <Badge className="bg-primary text-primary-foreground">+ jusqu’à 20 XP</Badge>
+        <p className="mt-4 font-semibold">Quel est ce signe ?</p>
+
+        <div className="grid grid-cols-1 gap-2 mt-3">
+          {current.pool.map((s) => (
+            <Button
+              key={s.id}
+              variant="outline"
+              onClick={async () => {
+                const ok = s.id === current.correctId;
+                const newScore = score + (ok ? 20 : 0);
+                const nextIdx = idx + 1;
+
+                setScore(newScore);
+
+                if (nextIdx >= questions.length) {
+                  await finish(newScore);
+                } else {
+                  setIdx(nextIdx);
+                }
+              }}
+            >
+              {s.word}
+            </Button>
+          ))}
         </div>
       </Card>
-
-      <div className="space-y-3">
-        {question.choices.map((c) => (
-          <Button
-            key={c.id}
-            variant={selected === c.id ? "default" : "outline"}
-            className="w-full justify-start rounded-xl"
-            onClick={() => setSelected(c.id)}
-          >
-            {c.word}
-          </Button>
-        ))}
-      </div>
-
-      {error && (
-        <p className="text-sm text-destructive mt-3">{error}</p>
-      )}
-
-      <Button
-        className="w-full mt-4 rounded-xl"
-        disabled={!selected || saving}
-        onClick={() => finish(selected === question.correct.id)}
-      >
-        Valider
-      </Button>
     </div>
   );
 }

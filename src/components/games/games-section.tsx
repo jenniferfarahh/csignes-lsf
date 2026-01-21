@@ -1,14 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { GameCard } from "./game-card";
 import { Badge } from "@/components/ui/badge";
 import { Gamepad2, Zap, Target } from "lucide-react";
 import { useSigns } from "@/hooks/useSigns";
 import { useGameStats } from "@/hooks/useGameStats";
-
-import { GuessSignGame } from "./play/GuessSignGame";
-import { MimeGuessGame } from "./play/MimeGuessGame";
-import { TheoryQuizGame } from "./play/TheoryQuizGame";
 
 type GameId = "guess_sign" | "mime_guess" | "quiz_lsf" | "conversation";
 
@@ -18,19 +14,18 @@ type Game = {
   description: string;
   difficulty: "facile" | "moyen" | "difficile";
   duration: string;
-  isLocked?: boolean;
+  isLocked?: boolean;     // bloqué (ex: pas assez de signes)
+  isAlreadyPlayed?: boolean; // ✅ déjà joué
 };
 
-export function GamesSection() {
+export function GamesSection(props: { onPlayGame: (id: GameId) => void }) {
   const { data: signs, isLoading: signsLoading, isError: signsError } = useSigns();
-  const { summary, reload } = useGameStats();
-
-  const [activeGame, setActiveGame] = useState<GameId | null>(null);
-
-  const completedSet = useMemo(() => new Set(summary.completedGameIds), [summary.completedGameIds]);
+  const { summary } = useGameStats();
 
   const games: Game[] = useMemo(() => {
-    const hasEnoughSigns = signs.length >= 4;
+    const hasEnoughSigns = (signs?.length ?? 0) >= 4;
+
+    const played = summary.playedGameIds;
 
     return [
       {
@@ -42,65 +37,39 @@ export function GamesSection() {
         difficulty: "facile",
         duration: "5 min",
         isLocked: !hasEnoughSigns,
+        isAlreadyPlayed: played.has("guess_sign"),
       },
       {
         id: "mime_guess",
         title: "Mime et devine",
         description: hasEnoughSigns
-          ? "Observe le GIF, mime, puis réponds au QCM"
+          ? "Reproduis le signe à l'écran puis choisis la bonne réponse"
           : "Ajoute quelques signes (GIFs) pour jouer",
         difficulty: "moyen",
         duration: "10 min",
         isLocked: !hasEnoughSigns,
+        isAlreadyPlayed: played.has("mime_guess"),
       },
       {
         id: "quiz_lsf",
         title: "Quiz express",
-        description: "Questions rapides sur la LSF (théorie)",
+        description: "Questions rapides sur la LSF",
         difficulty: "facile",
         duration: "3 min",
         isLocked: false,
+        isAlreadyPlayed: played.has("quiz_lsf"),
       },
       {
         id: "conversation",
         title: "Conversation guidée",
-        description: "Bientôt disponible",
+        description: "Dialogue interactif en LSF",
         difficulty: "difficile",
         duration: "15 min",
         isLocked: true,
+        isAlreadyPlayed: played.has("conversation"),
       },
     ];
-  }, [signs]);
-
-  // ✅ Si un jeu est sélectionné, on affiche son composant (pas besoin de router)
-  if (activeGame === "guess_sign") {
-    return (
-      <GuessSignGame
-        signs={signs}
-        onBack={() => setActiveGame(null)}
-        onCompleted={() => reload()} // recharge stats => disable
-      />
-    );
-  }
-
-  if (activeGame === "mime_guess") {
-    return (
-      <MimeGuessGame
-        signs={signs}
-        onBack={() => setActiveGame(null)}
-        onCompleted={() => reload()}
-      />
-    );
-  }
-
-  if (activeGame === "quiz_lsf") {
-    return (
-      <TheoryQuizGame
-        onBack={() => setActiveGame(null)}
-        onCompleted={() => reload()}
-      />
-    );
-  }
+  }, [signs, summary.playedGameIds]);
 
   const stats = [
     { label: "Jeux terminés", value: String(summary.gamesCompleted), icon: Target },
@@ -161,22 +130,19 @@ export function GamesSection() {
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-foreground">Tous les jeux</h2>
 
-        {games.map((game) => {
-          const isCompleted = completedSet.has(game.id);
-
-          return (
-            <GameCard
-              key={game.id}
-              title={game.title}
-              description={game.description}
-              difficulty={game.difficulty}
-              duration={game.duration}
-              isLocked={game.isLocked}
-              isCompleted={isCompleted}
-              onPlay={() => setActiveGame(game.id)}
-            />
-          );
-        })}
+        {games.map((game) => (
+          <GameCard
+            key={game.id}
+            title={game.title}
+            description={game.description}
+            difficulty={game.difficulty}
+            duration={game.duration}
+            isLocked={game.isLocked}
+            // ✅ IMPORTANT: déjà joué => bouton disabled + label “Déjà joué”
+            isCompleted={game.isAlreadyPlayed}
+            onPlay={() => props.onPlayGame(game.id)}
+          />
+        ))}
       </div>
     </div>
   );
