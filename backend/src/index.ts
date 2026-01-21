@@ -216,6 +216,49 @@ app.get("/api/progress/me/lesson/:lessonId/attempt", requireAuth, async (req: Au
   res.json(attempt);
 });
 
+// backend/src/index.ts
+app.get("/api/history/week", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.sub; // adapte si ton middleware expose l'id autrement
+
+    const from = String(req.query.from ?? "").trim(); // "YYYY-MM-DD"
+    const to = String(req.query.to ?? "").trim();     // "YYYY-MM-DD"
+
+    if (!from || !to) {
+      return res.status(400).json({ error: "Missing from/to (YYYY-MM-DD)" });
+    }
+
+    const fromDate = new Date(`${from}T00:00:00.000Z`);
+    const toDate = new Date(`${to}T23:59:59.999Z`);
+
+    // 1) attempts de la semaine
+    const attempts = await prisma.lessonAttempt.findMany({
+      where: {
+        userId,
+        createdAt: { gte: fromDate, lte: toDate },
+      },
+      select: { createdAt: true, lessonId: true, isCorrect: true, xpAwarded: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // 2) progress user (XP + leçons terminées)
+    const progress = await prisma.userProgress.findUnique({
+      where: { userId },
+      select: { xp: true, completedLessons: true },
+    });
+
+    return res.json({
+      attempts,
+      xp: progress?.xp ?? 0,
+      completedLessons: progress?.completedLessons ?? [],
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
 app.post("/api/attempts", requireAuth, async (req: AuthRequest, res) => {
   const userId = req.userId!;
   const { lessonId, selectedIndex } = req.body as { lessonId?: string; selectedIndex?: number };
