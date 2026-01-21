@@ -28,7 +28,7 @@ export function HeroSection({ onStartLesson }: HeroSectionProps) {
             Bonjour {user?.firstName ?? ""} !
           </h1>
           <p className="text-muted-foreground text-base md:text-lg">
-            Continuons à apprendre la LSF ensemble
+            Apprenons la LSF ensemble
           </p>
         </div>
 
@@ -54,7 +54,7 @@ export function HeroSection({ onStartLesson }: HeroSectionProps) {
               </div>
               <div>
                 <p className="text-xl md:text-2xl font-bold text-foreground">{completedDays}/{weeklyGoal}</p>
-                <p className="text-muted-foreground text-xs md:text-sm">objectif</p>
+                <p className="text-muted-foreground text-xs md:text-sm">défis</p>
               </div>
             </div>
           </Card>
